@@ -35,85 +35,6 @@ const MASTER_KELULUSAN_DB_ID = "1f0xj0-tfK7hlEnAV-pIySfj_K4o46vjGV6iqo6toZRI";
 const TEMPLATE_SISWA_FILE_ID = "1jITh9Ss5DsesT35RN-R3DDvI1AZDIi8M57F4nTLZoeM";
 
 /**
- * [HELPER] Kunci Cache dan Nilai Default untuk Konfigurasi Sekolah
- * Tambahkan ini di bagian atas file Anda, dekat konstanta lainnya.
- */
-const CONFIG_CACHE_KEY = 'sekolah_config_v1_';
-const DEFAULTS_CONFIG = {
-  bobotRapor: 60,
-  bobotUjian: 40,
-  kkm: 76,
-  jumlahSemester: 5,
-  jenjangPilihan: '',
-  npsn: '',
-  nsm: '',
-  alamat: '',
-  provinsi: '',
-  kabKot: '',
-  pilihanKabKot: 'Kabupaten',
-  kecamatan: '',
-  kelDes: '',
-  pilihanKelDes: 'Kelurahan',
-  kodePos: '',
-  telepon: '',
-  email: '',
-  website: '',
-  namaKepsek: '',
-  nipKepsek: ''
-};
-
-/**
- * FUNGSI SATU KALI JALAN: Untuk menyimpan kredensial Firestore dengan aman.
- * 1. Buka file JSON yang Anda download dari Firebase.
- * 2. Salin nilai "project_id".
- * 3. Salin nilai "client_email".
- * 4. Salin nilai "private_key" (seluruh string, termasuk "-----BEGIN...-----").
- * 5. JALANKAN fungsi ini SATU KALI dari editor Apps Script.
- * 6. Setelah berhasil, HAPUS nilai-nilai tersebut dari kode agar aman.
- */
-function setupFirestoreAuth() {
-  // --- TEMPEL KREDENSIAL ANDA DI SINI (HANYA UNTUK 1 KALI RUN) ---
-  const project_id = "GANTI_DENGAN_PROJECT_ID_ANDA";
-  const client_email = "GANTI_DENGAN_CLIENT_EMAIL_ANDA";
-  const private_key = "GANTI_DENGAN_PRIVATE_KEY_ANDA";
-  // -----------------------------------------------------------
-
-  if (project_id === "GANTI_DENGAN_PROJECT_ID_ANDA") {
-    throw new Error("Harap masukkan kredensial dari file JSON service account Anda ke dalam fungsi setupFirestoreAuth.");
-  }
-
-  const scriptProperties = PropertiesService.getScriptProperties();
-  scriptProperties.setProperties({
-    'firestore_project_id': project_id,
-    'firestore_client_email': client_email,
-    'firestore_private_key': private_key
-  });
-
-  Logger.log("Kredensial Firestore berhasil disimpan di ScriptProperties.");
-  Logger.log("PENTING: Sekarang hapus kembali detail kredensial dari dalam fungsi setupFirestoreAuth()!");
-}
-
-/**
- * Mengambil instance Firestore yang sudah terautentikasi.
- * (Menggantikan `SpreadsheetApp.openById()_` untuk data nilai)
- */
-function getFirestoreInstance() {
-  const scriptProperties = PropertiesService.getScriptProperties();
-  const project_id = scriptProperties.getProperty('firestore_project_id');
-  const client_email = scriptProperties.getProperty('firestore_client_email');
-  const private_key = scriptProperties.getProperty('firestore_private_key');
-
-  if (!project_id || !client_email || !private_key) {
-    throw new Error("Kredensial Firestore tidak ditemukan. Harap jalankan `setupFirestoreAuth()` terlebih dahulu.");
-  }
-
-  const firestore = FirebaseApp.getFirestore(client_email, private_key, project_id);
-  
-  // Kembalikan instance DAN project_id untuk membangun path manual
-  return { firestore: firestore, projectId: project_id }; 
-}
-
-/**
  * Mengubah array byte (dari computeDigest) menjadi string heksadesimal.
  */
 function bytesToHex(bytes) {
@@ -367,87 +288,101 @@ function buatDatabaseSekolahBaru(namaSekolah, jenjang, email, password, masterSS
   }
 }
 
-/**
- * [DIGANTI] Memverifikasi token dari Firestore, lalu membuat dokumen di koleksi 'sekolah'.
- * Fungsi ini tidak lagi membutuhkan `masterSS` atau `lock`.
- */
 function prosesVerifikasiToken(token) {
   if (!token) {
     return `<h1>Permintaan Tidak Valid</h1>
             <p>Permintaan verifikasi tidak lengkap. Pastikan Anda menggunakan link yang benar dari email.</p>`;
   }
   
+  let masterSS;
+  let sheetSekolah;
+  let sheetPending;
+  
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  
   try {
-    const { firestore } = getFirestoreInstance();
-    const docPath = `registrasi_pending/${token}`;
-    
-    let pendingDoc;
-    try {
-      pendingDoc = firestore.getDocument(docPath);
-    } catch (e) {
-      // Dokumen tidak ada
-      return `<h1>Token Tidak Valid</h1>
-              <p>Token verifikasi Anda tidak ditemukan. Link ini mungkin sudah digunakan atau tidak valid.</p>`;
-    }
+    masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    sheetPending = getSheetRegistrasiPending(masterSS); 
 
-    const dataPending = pendingDoc.fields;
+    const dataPending = sheetPending.getDataRange().getValues();
     const now = new Date();
-    const expiryLimit = new Date(now.getTime() - (TOKEN_EXPIRY_HOURS * 60 * 60 * 1000));
-    const timestamp = new Date(parseValue(dataPending.timestamp));
+    const expiryLimit = now.getTime() - (TOKEN_EXPIRY_HOURS * 60 * 60 * 1000);
 
-    if (timestamp < expiryLimit) {
-      firestore.deleteDocument(docPath); // Hapus token kedaluwarsa
-      return `<h1>Token Kedaluwarsa</h1>
-              <p>Link verifikasi Anda sudah tidak berlaku (lebih dari ${TOKEN_EXPIRY_HOURS} jam). Untuk keamanan, silakan lakukan registrasi ulang.</p>`;
+    for (let i = dataPending.length - 1; i >= 1; i--) {
+      const row = dataPending[i];
+      const dbToken = row[6];
+      const dbTimestamp = new Date(row[7]).getTime();
+
+      if (dbToken === token) {
+        if (dbTimestamp < expiryLimit) {
+          sheetPending.deleteRow(i + 1);
+          return `<h1>Token Kedaluwarsa</h1>
+                  <p>Link verifikasi Anda sudah tidak berlaku (lebih dari ${TOKEN_EXPIRY_HOURS} jam). Untuk keamanan, silakan lakukan registrasi ulang.</p>`;
+        }
+
+        const email = row[0];
+        const namaSekolah = row[1];
+        const npsn = row[2];
+        const jenjang = row[3];
+        const dbHash = row[4];
+        const dbSalt = row[5];
+        
+        const emailFinder = sheetSekolah.getRange("D2:D").createTextFinder(email).matchEntireCell(true).findAll();
+        
+        if (emailFinder.length > 0) {
+          sheetPending.deleteRow(i + 1);
+          const appUrl = ScriptApp.getService().getUrl();
+          return `<h1>Akun Sudah Aktif</h1>
+                  <p>Akun dengan email ini sudah terverifikasi dan aktif. Anda dapat langsung login.</p>
+                  <a href="${appUrl}" class="button-login">Menuju Halaman Login</a>`;
+        }
+
+        try {
+          const newSSID = buatDatabaseSekolahBaru(namaSekolah, jenjang, email, "dummy_password_not_used", masterSS);
+          
+          const newSekolahID = "SKL-" + (sheetSekolah.getLastRow());
+          sheetSekolah.appendRow([
+            newSekolahID, 
+            namaSekolah.toUpperCase(), 
+            jenjang, 
+            email, 
+            dbHash, 
+            newSSID,
+            dbSalt,
+            npsn
+          ]);
+
+          sheetPending.deleteRow(i + 1);
+          
+          clearMasterSheetCache();
+          
+          const appUrl = ScriptApp.getService().getUrl();
+          return `<h1>Verifikasi Berhasil!</h1>
+                  <p>Akun Anda telah berhasil diaktifkan dan database sekolah Anda telah dibuat.</p>
+                  <p>Silakan klik tombol di bawah ini untuk masuk ke halaman login.</p>
+                  <a href="${appUrl}" class="button-login">Menuju Halaman Login</a>`;
+          
+        } catch (e) {
+          Logger.log(`Verifikasi sukses untuk ${email} TAPI GAGAL buat DB: ${e.message}`);
+          return `<h1>Verifikasi Berhasil, Namun...</h1>
+                  <p>Akun Anda terverifikasi, tetapi terjadi error saat penyiapan database sekolah. Silakan hubungi admin untuk tindak lanjut.</p>
+                  <p style="font-size: 14px; color: #6c757d;">Detail Error: ${e.message}</p>`;
+        }
+      }
     }
+    
+    return `<h1>Token Tidak Valid</h1>
+            <p>Token verifikasi Anda tidak ditemukan. Link ini mungkin sudah digunakan atau tidak valid.</p>`;
 
-    const email = parseValue(dataPending.email);
-    const namaSekolah = parseValue(dataPending.namaSekolah);
-    
-    // Cek lagi jika email sudah terdaftar di 'sekolah'
-    const emailCheck = firestore.getCollection('sekolah').where('emailAdmin', '==', email).getDocuments();
-    if (emailCheck.length > 0) {
-      firestore.deleteDocument(docPath); // Hapus token
-      const appUrl = ScriptApp.getService().getUrl();
-      return `<h1>Akun Sudah Aktif</h1>
-              <p>Akun dengan email ini sudah terverifikasi dan aktif. Anda dapat langsung login.</p>
-              <a href="${appUrl}" class="button-login">Menuju Halaman Login</a>`;
-    }
-
-    // Buat Spreadsheet baru (fungsi ini tidak berubah, `masterSS` diabaikan)
-    const newSSID = buatDatabaseSekolahBaru(namaSekolah, parseValue(dataPending.jenjang), email, "dummy", null);
-    
-    // Buat dokumen sekolah baru di Firestore
-    const newSekolahID = "SKL-" + Utilities.getUuid().substring(0, 6).toUpperCase(); // Buat ID unik
-    const docSekolahPath = `sekolah/${newSekolahID}`;
-    
-    const dataSekolah = {
-      sekolahID: newSekolahID,
-      namaSekolah: namaSekolah,
-      jenjang: parseValue(dataPending.jenjang),
-      emailAdmin: email,
-      hashedPassword: parseValue(dataPending.hashedPassword),
-      salt: parseValue(dataPending.salt),
-      spreadsheetID: newSSID,
-      npsn: parseValue(dataPending.npsn)
-    };
-    
-    firestore.createDocument(docSekolahPath, dataSekolah);
-    
-    // Hapus dokumen pending
-    firestore.deleteDocument(docPath);
-    
-    const appUrl = ScriptApp.getService().getUrl();
-    return `<h1>Verifikasi Berhasil!</h1>
-            <p>Akun Anda telah berhasil diaktifkan dan database sekolah Anda telah dibuat.</p>
-            <p>Silakan klik tombol di bawah ini untuk masuk ke halaman login.</p>
-            <a href="${appUrl}" class="button-login">Menuju Halaman Login</a>`;
-    
   } catch (e) {
     Logger.log(e);
     return `<h1>Error Server</h1>
             <p>Terjadi kegagalan di server. Silakan coba lagi beberapa saat, atau hubungi admin jika masalah berlanjut.</p>
             <p style="font-size: 14px; color: #6c757d;">Detail Error: ${e.message}</p>`;
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -558,93 +493,96 @@ function clearMapelCache(sekolahID) {
   }
 }
 
-/**
- * [DIGANTI] Memproses login Admin dan Superadmin dari Firestore.
- */
 function prosesLogin(email, password) {
   try {
-    const { firestore } = getFirestoreInstance();
-    email = email.trim().toLowerCase();
-
-    // 1. Cek Superadmin
-    // Dokumen superadmin menggunakan email sebagai ID Dokumen
-    try {
-      const superadminDoc = firestore.getDocument(`superadmin/${email}`);
-      if (superadminDoc.fields) {
-        const sa = superadminDoc.fields;
-        if (verifyPassword(password, parseValue(sa.hashedPassword), parseValue(sa.salt))) {
-          const token = Utilities.getUuid();
-          const sessionData = {
-            role: 'superadmin',
-            nama: parseValue(sa.nama),
-            lastActivity: new Date().getTime()
-          };
-          CacheService.getScriptCache().put('SESSION_' + token, JSON.stringify(sessionData), 21600);
-          return { status: "sukses", role: "superadmin", nama: parseValue(sa.nama), token: token };
-        }
-      }
-    } catch (e) {
-      // Gagal (dokumen tidak ada), lanjutkan cek admin sekolah
-    }
-
-    // 2. Cek Admin Sekolah (via Query)
-    const sekolahDocs = firestore.getCollection('sekolah')
-                                 .where('emailAdmin', '==', email)
-                                 .getDocuments();
-
-    if (sekolahDocs.length > 0) {
-      const sekolahData = sekolahDocs[0].fields;
-      if (verifyPassword(password, parseValue(sekolahData.hashedPassword), parseValue(sekolahData.salt))) {
-        
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    
+    const sheetSuperadmin = getSheetSuperadmin(masterSS);
+    const superadminEmailFinder = sheetSuperadmin.getRange("A2:A").createTextFinder(email).matchEntireCell(true).findAll();
+    
+    if (superadminEmailFinder.length > 0) {
+      const rowNum = superadminEmailFinder[0].getRow();
+      const rowData = sheetSuperadmin.getRange(rowNum, 1, 1, sheetSuperadmin.getLastColumn()).getValues()[0];
+      if (verifyPassword(password, rowData[2], rowData[3])) {
         const token = Utilities.getUuid();
-        const sekolahID = parseValue(sekolahData.sekolahID);
-        const spreadsheetID = parseValue(sekolahData.spreadsheetID);
-        const namaSekolahUpper = parseValue(sekolahData.namaSekolah).toUpperCase();
-        
-        // Ambil jenjangPilihan dari config sekolah (fungsi dari Langkah 3)
-        const config = getSekolahConfigData(sekolahID, spreadsheetID);
-        
         const sessionData = {
-          role: 'admin',
-          sekolahID: sekolahID,
-          namaSekolah: namaSekolahUpper,
-          jenjang: parseValue(sekolahData.jenjang),
-          spreadsheetID: spreadsheetID,
-          jenjangPilihan: config.jenjangPilihan, // Dari config
+          role: 'superadmin',
+          nama: rowData[1],
           lastActivity: new Date().getTime()
         };
         CacheService.getScriptCache().put('SESSION_' + token, JSON.stringify(sessionData), 21600);
         return {
           status: "sukses",
-          role: "admin",
-          namaSekolah: namaSekolahUpper,
-          jenjang: sessionData.jenjang,
-          jenjangPilihan: config.jenjangPilihan,
+          role: "superadmin",
+          nama: rowData[1],
           token: token
         };
       }
     }
+    
+    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    const adminEmailFinder = sheetSekolah.getRange("D2:D").createTextFinder(email).matchEntireCell(true).findAll();
+    
+    let cachedRow = null;
+    let passwordIsValid = false;
 
-    // 3. Gagal total
-    return { status: "gagal", message: "Email atau password salah." };
+    if (adminEmailFinder.length > 0) {
+      const rowNum = adminEmailFinder[0].getRow();
+      const rowData = sheetSekolah.getRange(rowNum, 1, 1, sheetSekolah.getLastColumn()).getValues()[0];
+      
+      if (rowData[6]) {
+        passwordIsValid = verifyPassword(password, rowData[4], rowData[6]);
+      } else {
+        passwordIsValid = (rowData[4] === password);
+      }
+      if (passwordIsValid) {
+        cachedRow = rowData;
+      }
+    }
+
+    if (!passwordIsValid || !cachedRow) {
+      return { status: "gagal", message: "Email atau password salah." };
+    }
+    
+    const token = Utilities.getUuid();
+    const namaSekolahUpper = cachedRow[1].toUpperCase();
+    const userSpreadsheetID = cachedRow[5];
+    const jenjangPilihan = getJenjangPilihanFromSheet(userSpreadsheetID);
+    const sessionData = {
+      role: 'admin',
+      sekolahID: cachedRow[0],
+      namaSekolah: namaSekolahUpper,
+      jenjang: cachedRow[2],
+      spreadsheetID: userSpreadsheetID,
+      jenjangPilihan: jenjangPilihan,
+      lastActivity: new Date().getTime()
+    };
+    CacheService.getScriptCache().put('SESSION_' + token, JSON.stringify(sessionData), 21600);
+    return {
+      status: "sukses",
+      role: "admin",
+      namaSekolah: namaSekolahUpper,
+      jenjang: cachedRow[2],
+      jenjangPilihan: jenjangPilihan,
+      token: token
+    };
   } catch (e) {
-    Logger.log(`Gagal prosesLogin (Firestore): ${e.message}`);
     return { status: "gagal", message: "Terjadi error: " + e.message };
   }
 }
 
-/**
- * [DIGANTI] Memproses registrasi baru ke koleksi 'registrasi_pending' di Firestore.
- */
 function prosesRegistrasi(namaSekolah, npsn, jenjang, email, password) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+
   try {
-    // Validasi input
     if (!namaSekolah || !npsn || !jenjang || !email || !password) {
       return { status: "gagal", message: "Semua data wajib diisi." };
     }
     if (!/^\d+$/.test(npsn)) {
       return { status: "gagal", message: "NPSN harus berupa angka." };
     }
+
     if (password.length < 8) {
       return { status: "gagal", message: "Password minimal harus 8 karakter." };
     }
@@ -661,48 +599,45 @@ function prosesRegistrasi(namaSekolah, npsn, jenjang, email, password) {
       return { status: "gagal", message: "Password harus mengandung minimal satu simbol (contoh: @, #, $, !)." };
     }
 
-    email = email.trim().toLowerCase();
-    const { firestore } = getFirestoreInstance();
-
-    // 1. Cek duplikat di koleksi 'sekolah'
-    const emailCheck = firestore.getCollection('sekolah').where('emailAdmin', '==', email).getDocuments();
-    if (emailCheck.length > 0) {
-      return { status: "gagal", message: "Email ini sudah terdaftar dan aktif." };
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    let sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    
+    if (sheetSekolah) {
+       const dataSekolah = sheetSekolah.getDataRange().getValues();
+       for (let i = 1; i < dataSekolah.length; i++) {
+         if (dataSekolah[i][3] === email) {
+           return { status: "gagal", message: "Email ini sudah terdaftar dan aktif." };
+         }
+         if (dataSekolah[i][7] && dataSekolah[i][7] == npsn) { 
+           return { status: "gagal", message: "NPSN ini sudah terdaftar oleh sekolah lain." };
+         }
+       }
+    } else {
+       sheetSekolah = masterSS.insertSheet('Sheet_Sekolah');
+       sheetSekolah.appendRow(['SekolahID', 'NamaSekolah', 'Jenjang', 'EmailAdmin', 'HashedPassword', 'SpreadsheetID', 'Salt', 'NPSN']);
     }
-    const npsnCheck = firestore.getCollection('sekolah').where('npsn', '==', npsn).getDocuments();
-    if (npsnCheck.length > 0) {
-      return { status: "gagal", message: "NPSN ini sudah terdaftar oleh sekolah lain." };
-    }
 
-    // 2. Cek duplikat di koleksi 'registrasi_pending'
-    const pendingEmailCheck = firestore.getCollection('registrasi_pending').where('email', '==', email).getDocuments();
-    const pendingNpsnCheck = firestore.getCollection('registrasi_pending').where('npsn', '==', npsn).getDocuments();
-
+    const sheetPending = getSheetRegistrasiPending(masterSS);
+    const dataPending = sheetPending.getDataRange().getValues();
     const now = new Date();
-    const expiryLimit = new Date(now.getTime() - (TOKEN_EXPIRY_HOURS * 60 * 60 * 1000));
+    const expiryLimit = now.getTime() - (TOKEN_EXPIRY_HOURS * 60 * 60 * 1000);
 
-    // Cek Npsn dulu
-    if (pendingNpsnCheck.length > 0) {
-      const pendingDoc = pendingNpsnCheck[0];
-      const timestamp = new Date(parseValue(pendingDoc.fields.timestamp));
-      if (timestamp < expiryLimit) {
-        // Data lama, hapus
-        firestore.deleteDocument(pendingDoc.name); // 'name' adalah path lengkap
-      } else {
+    for (let i = dataPending.length - 1; i >= 1; i--) {
+      const row = dataPending[i];
+      const dbEmail = row[0];
+      const dbNPSN = row[2];
+      const dbTimestamp = new Date(row[7]).getTime();
+
+      if (dbTimestamp < expiryLimit) {
+        sheetPending.deleteRow(i + 1);
+        continue;
+      }
+      
+      if (dbNPSN === npsn) {
         return { status: "gagal", message: "NPSN ini sudah didaftarkan dan menunggu verifikasi." };
       }
-    }
-    
-    // Cek Email
-    if (pendingEmailCheck.length > 0) {
-      const pendingDoc = pendingEmailCheck[0];
-      const timestamp = new Date(parseValue(pendingDoc.fields.timestamp));
-      if (timestamp < expiryLimit) {
-        firestore.deleteDocument(pendingDoc.name);
-      } else {
-        // Kirim ulang email
-        const token = pendingDoc.name.split('/').pop(); // Ambil ID dokumen dari path
-        kirimEmailVerifikasi(email, parseValue(pendingDoc.fields.namaSekolah), token);
+      if (dbEmail === email) {
+        kirimEmailVerifikasi(email, row[1], row[6]);
         return { 
           status: "pending", 
           message: "Email ini sudah terdaftar dan menunggu verifikasi. Kami telah mengirim ulang link verifikasi." 
@@ -710,24 +645,21 @@ function prosesRegistrasi(namaSekolah, npsn, jenjang, email, password) {
       }
     }
 
-    // 3. Buat data pending baru
     const verificationToken = Utilities.getUuid() + Utilities.getUuid();
     const namaSekolahUpper = namaSekolah.toUpperCase();
     const newSalt = generateSalt();
     const newHash = hashPassword(password, newSalt);
 
-    const dataPending = {
-      email: email,
-      namaSekolah: namaSekolahUpper,
-      npsn: npsn,
-      jenjang: jenjang,
-      hashedPassword: newHash,
-      salt: newSalt,
-      timestamp: now.toISOString()
-    };
-    
-    // Gunakan token sebagai ID Dokumen
-    firestore.createDocument(`registrasi_pending/${verificationToken}`, dataPending);
+    sheetPending.appendRow([
+      email,
+      namaSekolahUpper,
+      npsn,
+      jenjang,
+      newHash, 
+      newSalt, 
+      verificationToken,
+      now 
+    ]);
     
     kirimEmailVerifikasi(email, namaSekolahUpper, verificationToken);
 
@@ -739,6 +671,8 @@ function prosesRegistrasi(namaSekolah, npsn, jenjang, email, password) {
   } catch (e) {
     Logger.log(e);
     return { status: "gagal", message: "Terjadi error di server: " + e.message };
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -821,170 +755,154 @@ function validateSuperadminSession(token) {
   return sessionData;
 }
 
-// --- GANTI FUNGSI INI DI Kode.gs.html ---
-/**
- * [PERBAIKAN] Mengambil daftar sekolah dari koleksi 'sekolah' di Firestore.
- */
 function getSekolahList(token) {
   try {
     validateSuperadminSession(token);
-    const { firestore } = getFirestoreInstance();
-    
-    const documents = firestore.getCollection('sekolah').getDocuments();
-    
-    const sekolahList = documents.map(doc => {
-      const fields = doc.fields; // 'fields' sudah bersih
+    const dataSekolah = getCachedMasterSheetData();
+    dataSekolah.shift();
+    const sekolahList = dataSekolah.map(row => {
       return {
-        id: fields.sekolahID,
-        nama: fields.namaSekolah,
-        jenjang: fields.jenjang,
-        email: fields.emailAdmin,
-        spreadsheetId: fields.spreadsheetID
+        id: row[0],
+        nama: row[1],
+        jenjang: row[2],
+        email: row[3],
+        spreadsheetId: row[5]
       };
     });
-    
     return { status: "sukses", sekolah: sekolahList };
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
 }
 
-/**
- * [DIGANTI] Menghapus sekolah dari koleksi 'sekolah' dan menghapus Spreadsheet-nya.
- */
 function superadminDeleteSekolah(token, sekolahID, spreadsheetID) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
   try {
     validateSuperadminSession(token);
     if (!sekolahID || !spreadsheetID) {
       throw new Error("ID Sekolah dan ID Spreadsheet diperlukan.");
     }
-    
-    const { firestore } = getFirestoreInstance();
-    
-    // 1. Hapus dokumen dari Firestore
-    firestore.deleteDocument(`sekolah/${sekolahID}`);
-    
-    // 2. Hapus Spreadsheet (SAMA)
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    const data = sheetSekolah.getDataRange().getValues();
+    let rowDeleted = false;
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (data[i][0] === sekolahID) {
+        sheetSekolah.deleteRow(i + 1);
+        rowDeleted = true;
+        break;
+      }
+    }
+    if (!rowDeleted) {
+      throw new Error("SekolahID tidak ditemukan di database master.");
+    }
     try {
       DriveApp.getFileById(spreadsheetID).setTrashed(true);
     } catch (driveError) {
-      Logger.log(`Gagal menghapus spreadsheet ${spreadsheetID}: ${driveError.message}`);
     }
-    
-    // TODO (Opsional): Hapus semua data terkait (siswa, mapel, nilai, config, guru, dll)
-    // Ini membutuhkan query batch delete di semua koleksi lain,
-    // yang bisa memakan waktu. Untuk saat ini, kita biarkan data yatim.
-    // Contoh: firestore.deleteDocument(`sekolah_config/${sekolahID}`);
-    // Untuk koleksi (siswa, mapel, dll), perlu di-query dulu baru di-batch delete.
-
+    clearMasterSheetCache();
     return { status: "sukses", message: "Sekolah berhasil dihapus." };
   } catch (e) {
     return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
   }
 }
 
-/**
- * [DIGANTI] Menyimpan (membuat/update) sekolah di koleksi 'sekolah' Firestore.
- */
 function superadminSaveSekolah(token, data) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
   try {
     validateSuperadminSession(token);
     const { id, nama, jenjang, email, password } = data;
     if (!nama || !jenjang || !email) {
       throw new Error("Nama, Jenjang, dan Email wajib diisi.");
     }
-
-    const { firestore } = getFirestoreInstance();
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    const dataSekolah = sheetSekolah.getDataRange().getValues();
     const mode = id ? 'edit' : 'add';
-
-    // Cek duplikat email
-    const emailCheck = firestore.getCollection('sekolah').where('emailAdmin', '==', email).getDocuments();
-    if (emailCheck.length > 0 && parseValue(emailCheck[0].fields.sekolahID) !== id) {
-      throw new Error("Email ini sudah digunakan oleh sekolah lain.");
+    for (let i = 1; i < dataSekolah.length; i++) {
+      if (dataSekolah[i][3] === email && dataSekolah[i][0] !== id) {
+        throw new Error("Email ini sudah digunakan oleh sekolah lain.");
+      }
     }
-    
     if (mode === 'add') {
       if (!password) {
         throw new Error("Password wajib diisi untuk akun baru.");
       }
-      const newSSID = buatDatabaseSekolahBaru(nama, jenjang, email, password, null);
+      const newSSID = buatDatabaseSekolahBaru(nama, jenjang, email, password, masterSS);
       const newSalt = generateSalt();
       const newHash = hashPassword(password, newSalt);
-      const newSekolahID = "SKL-" + Utilities.getUuid().substring(0, 6).toUpperCase();
-      
-      const newDoc = {
-        sekolahID: newSekolahID,
-        namaSekolah: nama.toUpperCase(),
-        jenjang: jenjang,
-        emailAdmin: email,
-        hashedPassword: newHash,
-        spreadsheetID: newSSID,
-        salt: newSalt,
-        npsn: "" // Superadmin bisa mengedit NPSN nanti
-      };
-      
-      firestore.createDocument(`sekolah/${newSekolahID}`, newDoc);
-
-    } else { // Mode 'edit'
-      const docPath = `sekolah/${id}`;
-      const fieldsToUpdate = {
-        namaSekolah: nama.toUpperCase(),
-        jenjang: jenjang,
-        emailAdmin: email
-      };
-      
+      const newSekolahID = "SKL-" + (sheetSekolah.getLastRow());
+      sheetSekolah.appendRow([
+        newSekolahID,
+        nama.toUpperCase(),
+        jenjang,
+        email,
+        newHash,
+        newSSID,
+        newSalt
+      ]);
+    } else {
+      let rowToUpdate = -1;
+      for (let i = 1; i < dataSekolah.length; i++) {
+        if (dataSekolah[i][0] === id) {
+          rowToUpdate = i + 1;
+          break;
+        }
+      }
+      if (rowToUpdate === -1) {
+        throw new Error("SekolahID tidak ditemukan untuk diedit.");
+      }
+      sheetSekolah.getRange(rowToUpdate, 2).setValue(nama.toUpperCase());
+      sheetSekolah.getRange(rowToUpdate, 3).setValue(jenjang);
+      sheetSekolah.getRange(rowToUpdate, 4).setValue(email);
       if (password) {
         const newSalt = generateSalt();
         const newHash = hashPassword(password, newSalt);
-        fieldsToUpdate.hashedPassword = newHash;
-        fieldsToUpdate.salt = newSalt;
+        sheetSekolah.getRange(rowToUpdate, 5).setValue(newHash);
+        sheetSekolah.getRange(rowToUpdate, 7).setValue(newSalt);
       }
-      
-      firestore.updateDocument(docPath, fieldsToUpdate, true);
     }
-    
+    clearMasterSheetCache();
     return { status: "sukses", message: "Data sekolah berhasil disimpan." };
   } catch (e) {
     return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
   }
 }
 
-/**
- * [DIGANTI] Impersonate, membaca data sekolah dari Firestore.
- */
 function superadminImpersonate(sekolahID, token) {
   try {
     const sessionData = validateSuperadminSession(token);
-    const { firestore } = getFirestoreInstance();
-
-    let targetRow;
-    try {
-      const doc = firestore.getDocument(`sekolah/${sekolahID}`);
-      targetRow = doc.fields;
-    } catch (e) {
-      return { status: "gagal", message: "SekolahID tidak ditemukan." };
+    const dataSekolahFromCache = getCachedMasterSheetData();
+    let targetRow = null;
+    for (let i = 1; i < dataSekolahFromCache.length; i++) {
+      if (dataSekolahFromCache[i][0] === sekolahID) {
+        targetRow = dataSekolahFromCache[i];
+        break;
+      }
     }
-    
     if (!targetRow) {
       return { status: "gagal", message: "SekolahID tidak ditemukan." };
     }
-    
-    const spreadsheetID = parseValue(targetRow.spreadsheetID);
+    const spreadsheetID = targetRow[5];
     if (!spreadsheetID) {
       return { status: "gagal", message: "Sekolah ini tidak memiliki SpreadsheetID." };
     }
-
-    // Panggil helper dari Langkah 3
-    const config = getSekolahConfigData(sekolahID, spreadsheetID);
+    const jenjangPilihan = getJenjangPilihanFromSheet(spreadsheetID);
     
     sessionData.originalRole = 'superadmin';
     sessionData.role = 'admin';
     sessionData.isImpersonating = true;
     sessionData.sekolahID = sekolahID;
-    sessionData.namaSekolah = parseValue(targetRow.namaSekolah).toUpperCase();
-    sessionData.jenjang = parseValue(targetRow.jenjang);
+    sessionData.namaSekolah = targetRow[1].toUpperCase();
+    sessionData.jenjang = targetRow[2];
     sessionData.spreadsheetID = spreadsheetID;
-    sessionData.jenjangPilihan = config.jenjangPilihan;
+    sessionData.jenjangPilihan = jenjangPilihan;
 
     CacheService.getScriptCache().put('SESSION_' + token, JSON.stringify(sessionData), 21600);
 
@@ -994,7 +912,7 @@ function superadminImpersonate(sekolahID, token) {
       isImpersonating: true,
       namaSekolah: sessionData.namaSekolah,
       jenjang: sessionData.jenjang,
-      jenjangPilihan: config.jenjangPilihan,
+      jenjangPilihan: jenjangPilihan,
       token: token
     };
   } catch (e) {
@@ -1220,107 +1138,65 @@ function getMapel(token) {
   }
 }
 
-// --- GANTI FUNGSI INI DI Kode.gs.html ---
 function createMapel(token, mapelID, namaMapel) {
   try {
-    const { sessionData } = validateAdminSession(token);
-    const sekolahID = sessionData.sekolahID;
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
     if (!mapelID || !namaMapel) return { status: "gagal", message: "Data tidak lengkap." };
-
-    const { firestore } = getFirestoreInstance();
-    
-    // 1. Cek duplikat
-    const docId = `${sekolahID}_${mapelID}`;
-    const docPath = `mapel/${docId}`;
-    
-    try {
-      // Coba ambil dokumen. Jika berhasil (tidak error), berarti dokumen sudah ada.
-      const existingDoc = firestore.getDocument(docPath);
-      if (existingDoc && existingDoc.fields) {
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheetMapel = getMapelSheet(ss);
+    const data = sheetMapel.getDataRange().getValues();
+    let maxUrutan = 0;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] && data[i][0].toUpperCase() === mapelID.toUpperCase()) {
         return { status: "gagal", message: "MapelID sudah ada." };
       }
-    } catch (e) {
-      // Error berarti dokumen tidak ditemukan, ini yang kita harapkan.
+      const urutanNum = Number(data[i][4] || 0);
+      if (urutanNum > maxUrutan) maxUrutan = urutanNum;
     }
-    
-    // 2. Dapatkan urutan maksimum
-    const queryResponse = firestore.getCollection('mapel')
-                                   .where('sekolahID', '==', sekolahID)
-                                   // Asumsi Anda perlu index composite untuk ini
-                                   // .orderBy('urutan', 'DESCENDING') 
-                                   // .limit(1)
-                                   .getDocuments();
-    
-    let maxUrutan = 0;
-    if (queryResponse && queryResponse.length > 0) {
-       queryResponse.forEach(doc => {
-         const urutanNum = Number(parseValue(doc.fields.urutan) || 0);
-         if (urutanNum > maxUrutan) maxUrutan = urutanNum;
-       });
-    }
-    
-    // 3. Buat dokumen baru
-    const newDoc = {
-      sekolahID: sekolahID,
-      mapelID: mapelID,
-      namaMapel: namaMapel,
-      isUS: false,
-      isUP: false,
-      urutan: maxUrutan + 1
-    };
-    
-    // Buat dokumen dengan ID spesifik
-    firestore.createDocument(docPath, newDoc);
-
-    clearMapelCache(sekolahID);
+    sheetMapel.appendRow([mapelID, namaMapel, false, false, maxUrutan + 1]);
+    clearMapelCache(sessionData.sekolahID);
     return { status: "sukses" };
   } catch (e) {
-    return { status: "gagal", message: "Gagal membuat mapel: " + e.message };
+    return { status: "gagal", message: e.message };
   }
 }
 
-// --- GANTI FUNGSI INI DI Kode.gs.html ---
 function updateMapel(token, mapelID, namaMapel) {
   try {
-    const { sessionData } = validateAdminSession(token);
-    const sekolahID = sessionData.sekolahID;
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
     if (!mapelID || !namaMapel) return { status: "gagal", message: "Data tidak lengkap." };
-
-    const { firestore } = getFirestoreInstance();
-    const docId = `${sekolahID}_${mapelID}`;
-    const docPath = `mapel/${docId}`;
-
-    const fieldsToUpdate = {
-      namaMapel: namaMapel
-    };
-
-    // Parameter ketiga (mask) = true, untuk update field spesifik
-    firestore.updateDocument(docPath, fieldsToUpdate, true); 
-
-    clearMapelCache(sessionData.sekolahID);
-    return { status: "sukses" };
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheetMapel = getMapelSheet(ss);
+    const data = sheetMapel.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === mapelID) {
+        sheetMapel.getRange(i + 1, 2).setValue(namaMapel);
+        clearMapelCache(sessionData.sekolahID);
+        return { status: "sukses" };
+      }
+    }
+    return { status: "gagal", message: "MapelID tidak ditemukan." };
   } catch (e) {
-    // Jika 'updateDocument' gagal (misal: dokumen tidak ada), akan error.
-    return { status: "gagal", message: "MapelID tidak ditemukan atau gagal update: " + e.message };
+    return { status: "gagal", message: e.message };
   }
 }
 
-// --- GANTI FUNGSI INI DI Kode.gs.html ---
 function deleteMapel(token, mapelID) {
   try {
-    const { sessionData } = validateAdminSession(token);
-    const sekolahID = sessionData.sekolahID;
-    
-    const { firestore } = getFirestoreInstance();
-    const docId = `${sekolahID}_${mapelID}`;
-    const docPath = `mapel/${docId}`;
-
-    firestore.deleteDocument(docPath);
-
-    clearMapelCache(sessionData.sekolahID);
-    return { status: "sukses" };
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheetMapel = getMapelSheet(ss);
+    const data = sheetMapel.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (data[i][0] === mapelID) {
+        sheetMapel.deleteRow(i + 1);
+        clearMapelCache(sessionData.sekolahID);
+        return { status: "sukses" };
+      }
+    }
+    return { status: "gagal", message: "MapelID tidak ditemukan." };
   } catch (e) {
-    return { status: "gagal", message: "Gagal menghapus: " + e.message };
+    return { status: "gagal", message: e.message };
   }
 }
 
@@ -1445,38 +1321,44 @@ function saveMapelTipeUjianBatch(token, tipeUjianData) {
   }
 }
 
-// --- GANTI FUNGSI INI DI Kode.gs.html ---
 function saveMapelUrutanBatch(token, urutanData) {
-  let sekolahID, sessionData;
+  let spreadsheetID, sessionData;
   try {
     const session = validateAdminSession(token);
-    sekolahID = session.sessionData.sekolahID;
+    spreadsheetID = session.spreadsheetID;
     sessionData = session.sessionData;
-  } catch (e) { return { status: "gagal", message: e.message }; }
-  
+  } catch (e) {
+    return { status: "gagal", message: e.message };
+  }
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(15000);
   try {
-    const { firestore, projectId } = getFirestoreInstance();
-    const projectPath = `projects/${projectId}/databases/(default)/documents`;
-    const batch = firestore.batch();
-
-    urutanData.forEach(item => {
-      const docId = `${sekolahID}_${item.id}`;
-      const fullDocPath = `${projectPath}/mapel/${docId}`;
-      const docRef = { name: fullDocPath };
-      
-      const fieldsToUpdate = {
-        urutan: item.urutan
-      };
-
-      batch.update(docRef, fieldsToUpdate, { fieldPaths: ["urutan"] });
-    });
-
-    batch.commit();
-    
-    clearMapelCache(sessionData.sekolahID);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getMapelSheet(ss);
+    const dataRange = sheet.getDataRange();
+    const data = dataRange.getValues();
+    const urutanMap = new Map(urutanData.map(item => [item.id, item.urutan]));
+    let changesMade = false;
+    for (let i = 1; i < data.length; i++) {
+      const id = data[i][0];
+      const newUrutan = urutanMap.get(id);
+      if (newUrutan !== undefined && data[i][4] != newUrutan) {
+        data[i][4] = newUrutan;
+        changesMade = true;
+      }
+    }
+    if (changesMade) {
+      const valuesToUpdate = data.slice(1).map(row => [row[4]]);
+      if (valuesToUpdate.length > 0) {
+        sheet.getRange(2, 5, valuesToUpdate.length, 1).setValues(valuesToUpdate);
+      }
+      clearMapelCache(sessionData.sekolahID);
+    }
     return { status: "sukses" };
   } catch (e) {
-    return { status: "gagal", message: "Gagal batch update urutan: " + e.message };
+    return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -1516,242 +1398,149 @@ function getSiswaSheet(ss) {
   return sheet;
 }
 
-// --- GANTI FUNGSI INI DI Kode.gs.html ---
-/**
- * [PERBAIKAN] Mengambil data siswa dari Firestore, dengan cache.
- */
 function getSiswa(token) {
   try {
-    const { sessionData } = validateAdminOrGuruSession(token);
+    const { sessionData, spreadsheetID } = validateAdminOrGuruSession(token);
     const sekolahID = sessionData.sekolahID;
-    
     const cacheKey = SISWA_CACHE_KEY + "_" + sekolahID;
     const userCache = CacheService.getUserCache();
     const cachedSiswa = userCache.get(cacheKey);
     if (cachedSiswa != null) {
       return { status: "sukses", siswa: JSON.parse(cachedSiswa) };
     }
-    
-    const { firestore } = getFirestoreInstance();
-    const documents = firestore.getCollection('siswa')
-                               .where('sekolahID', '==', sekolahID)
-                               .getDocuments();
-
-    const siswaList = documents.map(doc => {
-      const fields = doc.fields; // 'fields' sudah merupakan objek JS yang bersih
-      const id = fields.siswaID;
-      const idNum = parseInt((id || 'SIS-0').split('-')[1] || 0);
-      
-      let tglLahir = fields.tglLahir || '';
-      // Jika data tglLahir adalah Objek Date (dari migrasi lama atau Firestore auto-detect)
-      if (tglLahir instanceof Date) {
-        tglLahir = Utilities.formatDate(tglLahir, Session.getScriptTimeZone(), "yyyy-MM-dd");
-      }
-      if (tglLahir.includes('T')) { // Jika formatnya ISO Timestamp string
-         tglLahir = tglLahir.split('T')[0]; // Ambil YYYY-MM-DD saja
-      }
-
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getSiswaSheet(ss);
+    const data = sheet.getDataRange().getValues();
+    data.shift();
+    const siswaList = data.map(row => {
+      const idNum = parseInt((row[0] || 'SIS-0').split('-')[1] || 0);
       return {
-        id: id,
-        nama: fields.namaSiswa,
-        nisn: fields.nisn,
-        nisLokal: fields.nisLokal || '',
-        jk: fields.jenisKelamin || '',
-        tempatLahir: fields.tempatLahir || '',
-        tglLahir: tglLahir,
-        kelas: fields.kelas || '',
-        urutan: Number(fields.urutan || idNum)
+        id: row[0],
+        nama: row[1],
+        nisn: row[2],
+        nisLokal: row[3] || '',
+        jk: row[4] || '',
+        tempatLahir: row[5] || '',
+        tglLahir: (row[6] instanceof Date) ? Utilities.formatDate(row[6], Session.getScriptTimeZone(), "yyyy-MM-dd") : '',
+        kelas: row[7] || '',
+        urutan: row[8] || idNum
       };
     });
-
     siswaList.sort((a, b) => {
       const kelasCompare = a.kelas.localeCompare(b.kelas);
       if (kelasCompare !== 0) return kelasCompare;
       return (Number(a.urutan) || 0) - (Number(b.urutan) || 0);
     });
-    
     userCache.put(cacheKey, JSON.stringify(siswaList), 3600);
     return { status: "sukses", siswa: siswaList };
   } catch (e) {
-    Logger.log("Gagal getSiswa (Firestore): " + e.message);
     return { status: "gagal", message: e.message };
   }
 }
 
-/**
- * [BARU/DIGANTI] Membuat dokumen siswa baru di Firestore.
- */
 function createSiswa(token, dataSiswa) {
   try {
-    const { sessionData } = validateAdminSession(token);
-    const sekolahID = sessionData.sekolahID;
-    
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
     if (!dataSiswa.nama || !dataSiswa.nisn || !dataSiswa.jk || !dataSiswa.kelas) {
       return { status: "gagal", message: "Data wajib diisi." };
     }
-
-    const { firestore } = getFirestoreInstance();
-
-    // 1. Cek duplikat NISN
-    const nisnCheck = firestore.getCollection('siswa')
-                               .where('sekolahID', '==', sekolahID)
-                               .where('nisn', '==', dataSiswa.nisn)
-                               .getDocuments();
-    
-    if (nisnCheck.length > 0) {
-      return { status: "gagal", message: "NISN sudah terdaftar." };
-    }
-
-    // 2. Dapatkan ID & Urutan maksimum
-    // Note: Ini bisa menjadi lambat jika siswa sangat banyak.
-    // Alternatifnya adalah menyimpan counter terpisah.
-    const allSiswaDocs = firestore.getCollection('siswa')
-                                  .where('sekolahID', '==', sekolahID)
-                                  .getDocuments();
-
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getSiswaSheet(ss);
+    const lastRow = sheet.getLastRow();
+    const nisnSet = new Set();
     let maxIdNum = 0;
     let maxUrutan = 0;
-    allSiswaDocs.forEach(doc => {
-      const idNum = parseInt((parseValue(doc.fields.siswaID) || 'SIS-0').split('-')[1] || 0);
-      if (idNum > maxIdNum) maxIdNum = idNum;
-      const urutanNum = Number(parseValue(doc.fields.urutan) || 0);
-      if (urutanNum > maxUrutan) maxUrutan = urutanNum;
-    });
-
+    if (lastRow > 1) {
+      const dataRange = sheet.getRange("A2:I" + lastRow).getValues();
+      dataRange.forEach(row => {
+        if (row[2]) nisnSet.add(String(row[2]));
+        const idNum = parseInt((row[0] || 'SIS-0').split('-')[1] || 0);
+        if (idNum > maxIdNum) maxIdNum = idNum;
+        const urutanNum = Number(row[8] || 0);
+        if (urutanNum > maxUrutan) maxUrutan = urutanNum;
+      });
+    }
+    if (nisnSet.has(String(dataSiswa.nisn))) {
+      return { status: "gagal", message: "NISN sudah terdaftar." };
+    }
     const newIdNum = maxIdNum + 1;
     const newUrutan = maxUrutan + 1;
     const newSiswaID = "SIS-" + newIdNum;
-    const docId = `${sekolahID}_${newSiswaID}`;
-    const docPath = `siswa/${docId}`;
-
-    // 3. Buat dokumen baru
-    const newDoc = {
-      sekolahID: sekolahID,
-      siswaID: newSiswaID,
-      namaSiswa: dataSiswa.nama,
-      nisn: dataSiswa.nisn,
-      nisLokal: dataSiswa.nisLokal || null,
-      jenisKelamin: dataSiswa.jk,
-      tempatLahir: dataSiswa.tempatLahir || null,
-      tglLahir: dataSiswa.tglLahir || null,
-      kelas: dataSiswa.kelas,
-      urutan: newUrutan
-    };
-
-    firestore.createDocument(docPath, newDoc);
-
+    const formattedNisn = dataSiswa.nisn ? "'" + dataSiswa.nisn : null;
+    const formattedNisLokal = dataSiswa.nisLokal ? "'" + dataSiswa.nisLokal : null;
+    sheet.appendRow([
+      newSiswaID, dataSiswa.nama, formattedNisn, formattedNisLokal,
+      dataSiswa.jk, dataSiswa.tempatLahir, dataSiswa.tglLahir || null,
+      dataSiswa.kelas, newUrutan
+    ]);
     clearSiswaCache(sessionData.sekolahID);
     return { status: "sukses" };
   } catch (e) {
-    Logger.log("Gagal createSiswa (Firestore): " + e.message);
     return { status: "gagal", message: e.message };
   }
 }
 
-/**
- * [BARU/DIGANTI] Memperbarui dokumen siswa di Firestore.
- */
 function updateSiswa(token, dataSiswa) {
   try {
-    const { sessionData } = validateAdminSession(token);
-    const sekolahID = sessionData.sekolahID;
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
     if (!dataSiswa.id) return { status: "gagal", message: "ID Siswa hilang." };
-
-    const { firestore } = getFirestoreInstance();
-
-    // 1. Cek duplikat NISN (pada siswa LAIN)
-    const nisnCheck = firestore.getCollection('siswa')
-                               .where('sekolahID', '==', sekolahID)
-                               .where('nisn', '==', dataSiswa.nisn)
-                               .getDocuments();
-
-    for (const doc of nisnCheck) {
-      if (parseValue(doc.fields.siswaID) !== dataSiswa.id) {
-        return { status: "gagal", message: "NISN sudah digunakan oleh siswa lain." };
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getSiswaSheet(ss);
+    const data = sheet.getDataRange().getValues();
+    let rowToUpdate = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][2] == dataSiswa.nisn && data[i][0] != dataSiswa.id) {
+        return { status: "gagal", message: "NISN sudah digunakan." };
       }
+      if (data[i][0] == dataSiswa.id) rowToUpdate = i + 1;
     }
-
-    // 2. Tentukan path dokumen dan update
-    const docId = `${sekolahID}_${dataSiswa.id}`;
-    const docPath = `siswa/${docId}`;
-
-    const fieldsToUpdate = {
-      namaSiswa: dataSiswa.nama,
-      nisn: dataSiswa.nisn,
-      nisLokal: dataSiswa.nisLokal || null,
-      jenisKelamin: dataSiswa.jk,
-      tempatLahir: dataSiswa.tempatLahir || null,
-      tglLahir: dataSiswa.tglLahir || null,
-      kelas: dataSiswa.kelas
-      // 'urutan' tidak diupdate di sini, tapi di 'saveSiswaUrutanBatch'
-    };
-
-    // Parameter ketiga (mask) = true, untuk update field spesifik (merge)
-    firestore.updateDocument(docPath, fieldsToUpdate, true); 
-
+    if (rowToUpdate === -1) return { status: "gagal", message: "Siswa tidak ditemukan." };
+    const formattedNisn = dataSiswa.nisn ? "'" + dataSiswa.nisn : null;
+    const formattedNisLokal = dataSiswa.nisLokal ? "'" + dataSiswa.nisLokal : null;
+    const updatedRow = [
+      dataSiswa.id, dataSiswa.nama, formattedNisn, formattedNisLokal,
+      dataSiswa.jk, dataSiswa.tempatLahir, dataSiswa.tglLahir || null, dataSiswa.kelas
+    ];
+    sheet.getRange(rowToUpdate, 1, 1, updatedRow.length).setValues([updatedRow]);
     clearSiswaCache(sessionData.sekolahID);
     return { status: "sukses" };
   } catch (e) {
-    Logger.log("Gagal updateSiswa (Firestore): " + e.message);
     return { status: "gagal", message: e.message };
   }
 }
 
-/**
- * [BARU/DIGANTI] Menghapus dokumen siswa dari Firestore.
- */
 function deleteSiswa(token, siswaID) {
   try {
-    const { sessionData } = validateAdminSession(token);
-    const sekolahID = sessionData.sekolahID;
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
     if (!siswaID) return { status: "gagal", message: "SiswaID kosong." };
-
-    const { firestore } = getFirestoreInstance();
-    const docId = `${sekolahID}_${siswaID}`;
-    const docPath = `siswa/${docId}`;
-
-    firestore.deleteDocument(docPath);
-
-    clearSiswaCache(sessionData.sekolahID);
-    return { status: "sukses" };
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getSiswaSheet(ss);
+    const data = sheet.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (data[i][0] == siswaID) {
+        sheet.deleteRow(i + 1);
+        clearSiswaCache(sessionData.sekolahID);
+        return { status: "sukses" };
+      }
+    }
+    return { status: "gagal", message: "Siswa tidak ditemukan." };
   } catch (e) {
-    Logger.log("Gagal deleteSiswa (Firestore): " + e.message);
     return { status: "gagal", message: e.message };
   }
 }
 
-/**
- * [BARU/DIGANTI] Menghapus semua dokumen siswa untuk sekolah ini.
- * Menggunakan Batch Delete.
- */
 function deleteAllSiswa(token) {
   try {
-    const { sessionData } = validateAdminSession(token);
-    const sekolahID = sessionData.sekolahID;
-    
-    const { firestore, projectId } = getFirestoreInstance();
-    const projectPath = `projects/${projectId}/databases/(default)/documents`;
-    const batch = firestore.batch();
-    
-    const documents = firestore.getCollection('siswa')
-                               .where('sekolahID', '==', sekolahID)
-                               .getDocuments();
-    
-    if (documents.length === 0) {
-      return { status: "sukses", message: "Tidak ada data siswa untuk dihapus." };
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getSiswaSheet(ss);
+    const lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+      sheet.deleteRows(2, lastRow - 1);
     }
-
-    documents.forEach(doc => {
-      // Kita butuh 'doc.name' yang merupakan path lengkap
-      batch.delete({ name: doc.name }); 
-    });
-
-    batch.commit();
-
     clearSiswaCache(sessionData.sekolahID);
-    return { status: "sukses", message: `Semua data siswa (${documents.length}) telah dihapus.` };
+    return { status: "sukses", message: "Semua data siswa dihapus." };
   } catch (e) {
-    Logger.log("Gagal deleteAllSiswa (Firestore): " + e.message);
     return { status: "gagal", message: e.message };
   }
 }
@@ -1783,202 +1572,65 @@ function getDataSekolahSheet(ss) {
   return sheet;
 }
 
-// --- GANTI FUNGSI INI DI Kode.gs.html ---
-/**
- * [PERBAIKAN] Fungsi ini dipanggil oleh checkToken() untuk mengambil jenjangPilihan.
- */
 function getJenjangPilihanFromSheet(spreadsheetID) {
   try {
-    const { firestore } = getFirestoreInstance();
-    
-    const sekolahDocs = firestore.getCollection('sekolah')
-                                 .where('spreadsheetID', '==', spreadsheetID)
-                                 .getDocuments();
-
-    if (sekolahDocs.length > 0) {
-      const sekolahID = sekolahDocs[0].fields.sekolahID; // 'fields' sudah bersih
-      // Panggil helper dari Langkah 3
-      const config = getSekolahConfigData(sekolahID, spreadsheetID);
-      return config.jenjangPilihan || "";
-    } else {
-      Logger.log(`Gagal menemukan sekolah untuk spreadsheetID ${spreadsheetID} di getJenjangPilihanFromSheet`);
-      return ""; // Fallback
-    }
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getDataSekolahSheet(ss); 
+    const jenjangPilihan = sheet.getRange('A2').getValue(); 
+    return String(jenjangPilihan);
   } catch (e) {
-    Logger.log(`Error di getJenjangPilihanFromSheet (Firestore): ${e.message}`);
-    return "";
+    Logger.log(`Gagal mengambil jenjangPilihan dari sheet ${spreadsheetID}: ${e.message}`);
+    return ""; 
   }
 }
 
-// ====================================================================
-// BAGIAN A: MIGRASI (Pengaturan) & (Data_Sekolah) -> sekolah_config
-// ====================================================================
-
-// --- GANTI FUNGSI INI DI Kode.gs.html ---
-/**
- * [PERBAIKAN] Fungsi inti untuk mendapatkan/membuat dokumen konfigurasi sekolah.
- */
-function getSekolahConfigData(sekolahID, spreadsheetID) {
-  const cacheKey = CONFIG_CACHE_KEY + sekolahID;
-  const userCache = CacheService.getUserCache();
-  const cachedConfig = userCache.get(cacheKey);
-  if (cachedConfig != null) {
-    return JSON.parse(cachedConfig);
-  }
-
-  const { firestore } = getFirestoreInstance();
-  const docPath = `sekolah_config/${sekolahID}`;
-  
-  try {
-    const doc = firestore.getDocument(docPath);
-    const configData = {};
-    const fields = doc.fields; // 'fields' sudah bersih
-
-    for (const key in DEFAULTS_CONFIG) {
-      // Ambil nilai dari 'fields' jika ada, jika tidak, gunakan default
-      configData[key] = fields[key] !== undefined ? fields[key] : DEFAULTS_CONFIG[key];
-    }
-    
-    userCache.put(cacheKey, JSON.stringify(configData), 3600); // Cache 1 jam
-    return configData;
-    
-  } catch (e) {
-    // Dokumen tidak ditemukan, lakukan migrasi dari Sheet
-    Logger.log(`Dokumen config untuk ${sekolahID} tidak ditemukan. Memulai migrasi dari Spreadsheet...`);
-    try {
-      // (Kode migrasi sisa-nya di sini sudah benar, tidak perlu diubah)
-      const ss = SpreadsheetApp.openById(spreadsheetID);
-      const newConfigData = { ...DEFAULTS_CONFIG }; // Salin default
-
-      // 1. Migrasi Data_Sekolah
-      try {
-        const sheetData = ss.getSheetByName('Data_Sekolah');
-        if (sheetData) {
-          const data = sheetData.getRange('A2:P2').getValues()[0];
-          newConfigData.jenjangPilihan = data[0] || DEFAULTS_CONFIG.jenjangPilihan;
-          newConfigData.npsn = data[1] || DEFAULTS_CONFIG.npsn;
-          // ... (sisa field data[2] s/d data[15] sudah benar) ...
-          newConfigData.nsm = data[2] || DEFAULTS_CONFIG.nsm;
-          newConfigData.alamat = data[3] || DEFAULTS_CONFIG.alamat;
-          newConfigData.provinsi = data[4] || DEFAULTS_CONFIG.provinsi;
-          newConfigData.kabKot = data[5] || DEFAULTS_CONFIG.kabKot;
-          newConfigData.pilihanKabKot = data[6] || DEFAULTS_CONFIG.pilihanKabKot;
-          newConfigData.kecamatan = data[7] || DEFAULTS_CONFIG.kecamatan;
-          newConfigData.kelDes = data[8] || DEFAULTS_CONFIG.kelDes;
-          newConfigData.pilihanKelDes = data[9] || DEFAULTS_CONFIG.pilihanKelDes;
-          newConfigData.kodePos = data[10] || DEFAULTS_CONFIG.kodePos;
-          newConfigData.telepon = data[11] || DEFAULTS_CONFIG.telepon;
-          newConfigData.email = data[12] || DEFAULTS_CONFIG.email;
-          newConfigData.website = data[13] || DEFAULTS_CONFIG.website;
-          newConfigData.namaKepsek = data[14] || DEFAULTS_CONFIG.namaKepsek;
-          newConfigData.nipKepsek = data[15] || DEFAULTS_CONFIG.nipKepsek;
-        }
-      } catch (e1) { Logger.log(`Sheet Data_Sekolah tidak ada saat migrasi: ${e1.message}`); }
-
-      // 2. Migrasi Pengaturan
-      try {
-        const sheetPengaturan = ss.getSheetByName('Pengaturan');
-        if (sheetPengaturan) {
-          const data = sheetPengaturan.getRange('A1:B' + sheetPengaturan.getLastRow()).getValues();
-          data.forEach(row => {
-            if (row[0] === 'Bobot_Rapor') newConfigData.bobotRapor = row[1];
-            if (row[0] === 'Bobot_Ujian') newConfigData.bobotUjian = row[1];
-            if (row[0] === 'KKM') newConfigData.kkm = row[1];
-            if (row[0] === 'Jumlah_Semester') newConfigData.jumlahSemester = row[1];
-          });
-        }
-      } catch (e2) { Logger.log(`Sheet Pengaturan tidak ada saat migrasi: ${e2.message}`); }
-      
-      // 3. Buat dokumen baru di Firestore
-      firestore.createDocument(docPath, newConfigData);
-      Logger.log(`Migrasi config untuk ${sekolahID} selesai. Dokumen dibuat.`);
-      userCache.put(cacheKey, JSON.stringify(newConfigData), 3600);
-      return newConfigData;
-
-    } catch (eMig) {
-      Logger.log(`Gagal total migrasi config: ${eMig.message}`);
-      throw new Error("Gagal memuat konfigurasi sekolah.");
-    }
-  }
-}
-
-/**
- * [HELPER BARU] Fungsi inti untuk menyimpan data ke dokumen konfigurasi sekolah.
- */
-function _saveSekolahConfig(sekolahID, dataToMerge, token) {
-  try {
-    const { firestore } = getFirestoreInstance();
-    const docPath = `sekolah_config/${sekolahID}`;
-
-    // Gunakan updateDocument dengan merge=true
-    firestore.updateDocument(docPath, dataToMerge, true);
-
-    // Perbarui sesi cache jika jenjangPilihan berubah
-    if (dataToMerge.hasOwnProperty('jenjangPilihan') && token) {
-      const cache = CacheService.getScriptCache();
-      const sessionJson = cache.get('SESSION_' + token);
-      if (sessionJson) {
-        const sessionData = JSON.parse(sessionJson);
-        sessionData.jenjangPilihan = dataToMerge.jenjangPilihan;
-        cache.put('SESSION_' + token, JSON.stringify(sessionData), 21600);
-      }
-    }
-
-    // Bersihkan cache dokumen
-    const cacheKey = CONFIG_CACHE_KEY + sekolahID;
-    CacheService.getUserCache().remove(cacheKey);
-
-    return { status: "sukses" };
-  } catch (e) {
-    Logger.log(`Gagal _saveSekolahConfig: ${e.message}`);
-    return { status: "gagal", message: e.message };
-  }
-}
-
-/**
- * [DIGANTI] Mengambil data sekolah (identitas) dari Firestore.
- */
 function getSchoolData(token) {
   try {
     const { sessionData, spreadsheetID } = validateAdminSession(token);
-    const config = getSekolahConfigData(sessionData.sekolahID, spreadsheetID);
-    
-    // Salin data config ke format lama yang diharapkan client
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getDataSekolahSheet(ss);
+    const data = sheet.getRange('A2:P2').getValues()[0];
     const dataSekolah = {
       jenjangBase: sessionData.jenjang,
       namaSekolah: sessionData.namaSekolah,
-      jenjangPilihan: config.jenjangPilihan,
-      npsn: config.npsn,
-      nsm: config.nsm,
-      alamat: config.alamat,
-      provinsi: config.provinsi,
-      kabKot: config.kabKot,
-      pilihanKabKot: config.pilihanKabKot,
-      kecamatan: config.kecamatan,
-      kelDes: config.kelDes,
-      pilihanKelDes: config.pilihanKelDes,
-      kodePos: config.kodePos,
-      telepon: config.telepon,
-      email: config.email,
-      website: config.website,
-      namaKepsek: config.namaKepsek,
-      nipKepsek: config.nipKepsek
+      jenjangPilihan: data[0],
+      npsn: data[1],
+      nsm: data[2],
+      alamat: data[3],
+      provinsi: data[4],
+      kabKot: data[5],
+      pilihanKabKot: data[6],
+      kecamatan: data[7],
+      kelDes: data[8],
+      pilihanKelDes: data[9],
+      kodePos: data[10],
+      telepon: data[11],
+      email: data[12],
+      website: data[13],
+      namaKepsek: data[14],
+      nipKepsek: data[15]
     };
-    
     return { status: "sukses", data: dataSekolah };
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
 }
 
-/**
- * [DIGANTI] Menyimpan data sekolah (identitas) ke Firestore.
- */
 function saveSchoolData(token, data) {
   try {
-    const { sessionData } = validateAdminSession(token);
-    // 'data' adalah objek yang sama persis dengan yang kita butuhkan.
-    return _saveSekolahConfig(sessionData.sekolahID, data, token);
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
+    sessionData.jenjangPilihan = data.jenjangPilihan;
+    CacheService.getScriptCache().put('SESSION_' + token, JSON.stringify(sessionData), 21600);
+
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getDataSekolahSheet(ss);
+    const dataArray = [
+      data.jenjangPilihan, data.npsn, data.nsm, data.alamat, data.provinsi,
+      data.kabKot, data.pilihanKabKot, data.kecamatan, data.kelDes, data.pilihanKelDes,
+      data.kodePos, data.telepon, data.email, data.website, data.namaKepsek, data.nipKepsek
+    ];
+    sheet.getRange('A2:P2').setValues([dataArray]);
+    return { status: "sukses" };
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
@@ -2028,31 +1680,33 @@ function getPengaturanSheet(ss) {
   return sheet;
 }
 
-/**
- * [DIGANTI] Mengambil data bobot dari Firestore.
- */
 function getBobotData(token) {
   try {
-    const { sessionData, spreadsheetID } = validateAdminSession(token);
-    const config = getSekolahConfigData(sessionData.sekolahID, spreadsheetID);
-    
-    return { 
-      status: "sukses", 
-      bobotUjian: config.bobotUjian, 
-      bobotRapor: config.bobotRapor, 
-      kkm: config.kkm 
-    };
+    const { spreadsheetID } = validateAdminSession(token);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getPengaturanSheet(ss);
+    const data = sheet.getRange('A1:B' + sheet.getLastRow()).getValues();
+    let bobotRapor = 60;
+    let bobotUjian = 40;
+    let kkm = 76;
+    for (let i = 0; i < data.length; i++) {
+      if (data[i][0] === 'Bobot_Rapor') {
+        bobotRapor = data[i][1];
+      } else if (data[i][0] === 'Bobot_Ujian') {
+        bobotUjian = data[i][1];
+      } else if (data[i][0] === 'KKM') {
+        kkm = data[i][1];
+      }
+    }
+    return { status: "sukses", bobotUjian: bobotUjian, bobotRapor: bobotRapor, kkm: kkm };
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
 }
 
-/**
- * [DIGANTI] Menyimpan data bobot ke Firestore.
- */
 function saveBobotData(token, bobotRapor, bobotUjian, kkm) {
   try {
-    const { sessionData } = validateAdminSession(token);
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
     if ((bobotRapor + bobotUjian) !== 100) {
       return { status: "gagal", message: "Total bobot harus 100." };
     }
@@ -2060,19 +1714,32 @@ function saveBobotData(token, bobotRapor, bobotUjian, kkm) {
     if (isNaN(kkmValue) || kkmValue < 0 || kkmValue > 100) {
       return { status: "gagal", message: "KKM harus angka antara 0 dan 100." };
     }
-
-    const dataToSave = {
-      bobotRapor: bobotRapor,
-      bobotUjian: bobotUjian,
-      kkm: kkmValue
-    };
-    
-    const result = _saveSekolahConfig(sessionData.sekolahID, dataToSave, token);
-    if (result.status === 'sukses') {
-      clearRekapNilaiCache(sessionData.sekolahID);
-      clearRekapNilaiRaporCache(sessionData.sekolahID);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getPengaturanSheet(ss);
+    const data = sheet.getRange('A1:B' + sheet.getLastRow()).getValues();
+    let foundRapor = false;
+    let foundUjian = false;
+    let foundKKM = false;
+    for (let i = 0; i < data.length; i++) {
+      const rowIdx = i + 1;
+      if (data[i][0] === 'Bobot_Rapor') {
+        sheet.getRange('B' + rowIdx).setValue(bobotRapor);
+        foundRapor = true;
+      } else if (data[i][0] === 'Bobot_Ujian') {
+        sheet.getRange('B' + rowIdx).setValue(bobotUjian);
+        foundUjian = true;
+      } else if (data[i][0] === 'KKM') {
+        sheet.getRange('B' + rowIdx).setValue(kkmValue);
+        foundKKM = true;
+      }
     }
-    return result;
+    if (!foundRapor) sheet.appendRow(['Bobot_Rapor', bobotRapor]);
+    if (!foundUjian) sheet.appendRow(['Bobot_Ujian', bobotUjian]);
+    if (!foundKKM) sheet.appendRow(['KKM', kkmValue]);
+
+    clearRekapNilaiCache(sessionData.sekolahID);
+    clearRekapNilaiRaporCache(sessionData.sekolahID);
+    return { status: "sukses" };
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
@@ -2095,15 +1762,7 @@ function getKelasSheet(ss) {
   return sheet;
 }
 
-// ====================================================================
-// BAGIAN B: MIGRASI Kelas -> koleksi 'kelas'
-// ====================================================================
-
-// --- GANTI FUNGSI INI DI Kode.gs.html ---
-/**
- * [PERBAIKAN] Mengambil data kelas yang terkunci (Siswa sudah punya nilai).
- */
-function getLockedKelasSet(spreadsheetID, sekolahID) { // Argumen diubah urutannya
+function getLockedKelasSet(ss, sekolahID) {
   try {
     const cacheKey = LOCKED_KELAS_CACHE_KEY + "_" + sekolahID;
     const scriptCache = CacheService.getScriptCache();
@@ -2112,61 +1771,39 @@ function getLockedKelasSet(spreadsheetID, sekolahID) { // Argumen diubah urutann
       return new Set(JSON.parse(cachedData));
     }
 
-    const { firestore } = getFirestoreInstance();
-    const lockedSiswaIdSet = new Set();
+    const sheetSiswa = getSiswaSheet(ss);
+    const sheetNilaiUjian = getNilaiUjianSheet(ss);
+    const sheetNilaiRapor = getNilaiRaporSheet(ss);
+
+    const siswaDataValues = (sheetSiswa.getLastRow() > 1) 
+      ? sheetSiswa.getRange("A2:H" + sheetSiswa.getLastRow()).getValues() 
+      : [];
+      
     const siswaIdToKelasMap = new Map();
-    
-    // 1. Dapatkan mapping SiswaID -> Kelas dari Firestore
-    const siswaDocs = firestore.getCollection('siswa')
-                               .where('sekolahID', '==', sekolahID)
-                               .getDocuments();
-    
-    siswaDocs.forEach(doc => {
-      const fields = doc.fields; // 'fields' sudah bersih
-      const siswaId = fields.siswaID;
-      const kelas = fields.kelas;
-      if (siswaId && kelas) {
-        siswaIdToKelasMap.set(siswaId, kelas);
-      }
-    });
-
-    // 2. Cek nilai Ujian
-    const ujianDocs = firestore.getCollection('nilai_ujian')
-                               .where('sekolahID', '==', sekolahID)
-                               .getDocuments();
-    for (const doc of ujianDocs) {
-      const fields = doc.fields; // 'fields' sudah bersih
-      if (fields.siswaID) {
-         const siswaId = fields.siswaID;
-         if (fields.um !== null && fields.um !== undefined) {
-           lockedSiswaIdSet.add(siswaId); continue;
-         }
-         if (fields.up !== null && fields.up !== undefined) {
-           lockedSiswaIdSet.add(siswaId);
-         }
-      }
+    for (const row of siswaDataValues) {
+      if (row[0] && row[7]) siswaIdToKelasMap.set(row[0], row[7]);
     }
+
+    const lockedSiswaIdSet = new Set();
     
-    // 3. Cek nilai Rapor
-    const raporDocs = firestore.getCollection('nilai_rapor')
-                               .where('sekolahID', '==', sekolahID)
-                               .getDocuments();
-    for (const doc of raporDocs) {
-      const fields = doc.fields; // 'fields' sudah bersih
-      if (fields.siswaID) {
-         const siswaId = fields.siswaID;
-         if (lockedSiswaIdSet.has(siswaId)) continue; 
-         
-         if (fields.p !== null && fields.p !== undefined) {
-           lockedSiswaIdSet.add(siswaId); continue;
-         }
-         if (fields.k !== null && fields.k !== undefined) {
-           lockedSiswaIdSet.add(siswaId);
-         }
+    if (sheetNilaiUjian.getLastRow() > 1) {
+      const nilaiUjianData = sheetNilaiUjian.getRange("A2:D" + sheetNilaiUjian.getLastRow()).getValues();
+      for (const row of nilaiUjianData) {
+        if (row[0] && ((row[2] != null && row[2] !== "") || (row[3] != null && row[3] !== ""))) {
+          lockedSiswaIdSet.add(row[0]);
+        }
       }
     }
 
-    // 4. Map SiswaID yang terkunci ke Nama Kelas
+    if (sheetNilaiRapor.getLastRow() > 1) {
+      const nilaiRaporData = sheetNilaiRapor.getRange("A2:E" + sheetNilaiRapor.getLastRow()).getValues();
+      for (const row of nilaiRaporData) {
+        if (row[0] && ((row[3] != null && row[3] !== "") || (row[4] != null && row[4] !== ""))) {
+          lockedSiswaIdSet.add(row[0]);
+        }
+      }
+    }
+
     const lockedKelasSet = new Set();
     for (const siswaId of lockedSiswaIdSet) {
       if (siswaIdToKelasMap.has(siswaId)) {
@@ -2177,117 +1814,72 @@ function getLockedKelasSet(spreadsheetID, sekolahID) { // Argumen diubah urutann
     scriptCache.put(cacheKey, JSON.stringify(Array.from(lockedKelasSet)), 3600);
     return lockedKelasSet;
   } catch (e) {
-    Logger.log(`Gagal getLockedKelasSet (Firestore): ${e.message}`);
-    return new Set(); 
+    return new Set();
   }
 }
 
-// --- GANTI FUNGSI INI DI Kode.gs.html ---
-/**
- * [PERBAIKAN] Mengambil daftar kelas dari Firestore.
- */
 function getKelas(token) {
   try {
     const { sessionData, spreadsheetID } = validateAdminOrGuruSession(token);
-    const sekolahID = sessionData.sekolahID;
-    
-    // 'ss' dilewatkan hanya untuk 'getLockedKelasSet'
-    // Kita harus memperbaiki 'getLockedKelasSet' juga
-    const lockedKelasSet = getLockedKelasSet(spreadsheetID, sekolahID); // Argumen dibalik
-
-    const { firestore } = getFirestoreInstance();
-    const documents = firestore.getCollection('kelas')
-                               .where('sekolahID', '==', sekolahID)
-                               .getDocuments();
-
-    const kelasListWithStatus = documents.map(doc => {
-      const nama = doc.fields.namaKelas; // 'fields' sudah bersih
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getKelasSheet(ss);
+    const data = sheet.getDataRange().getValues();
+    data.shift();
+    const kelasListNama = data.map(row => row[0]).filter(nama => nama);
+    const lockedKelasSet = getLockedKelasSet(ss, sessionData.sekolahID);
+    const kelasListWithStatus = kelasListNama.map(nama => {
       return {
         nama: nama,
         isLocked: lockedKelasSet.has(nama.toUpperCase())
       };
-    }).sort((a,b) => a.nama.localeCompare(b.nama)); // Urutkan berdasarkan nama
-    
+    });
     return { status: "sukses", kelasList: kelasListWithStatus };
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
 }
 
-/**
- * [DIGANTI] Menyimpan daftar kelas ke Firestore (Operasi Batch).
- */
 function saveKelas(token, kelasList) {
-  let sekolahID, sessionData, spreadsheetID;
+  let spreadsheetID, sessionData;
   try {
     const session = validateAdminSession(token);
-    sekolahID = session.sessionData.sekolahID;
+    spreadsheetID = session.spreadsheetID;
     sessionData = session.sessionData;
-    spreadsheetID = session.spreadsheetID; // Masih perlu untuk getLockedKelasSet
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
-  
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(15000);
   try {
-    // 'ss' dilewatkan hanya untuk 'getLockedKelasSet'
     const ss = SpreadsheetApp.openById(spreadsheetID);
-    const lockedKelasSet = getLockedKelasSet(ss, sekolahID);
-    
-    const { firestore, projectId } = getFirestoreInstance();
-    const projectPath = `projects/${projectId}/databases/(default)/documents`;
-    const batch = firestore.batch();
-
-    // 1. Dapatkan kelas yang ada di database
-    const documents = firestore.getCollection('kelas')
-                               .where('sekolahID', '==', sekolahID)
-                               .getDocuments();
-    
-    const dbKelasMap = new Map();
-    documents.forEach(doc => {
-      const nama = parseValue(doc.fields.namaKelas);
-      dbKelasMap.set(nama.toUpperCase(), { nama: nama, path: doc.name });
-    });
-
-    const newKelasSet = new Set(kelasList.map(k => k.toUpperCase()));
-
-    // 2. Cek penghapusan
-    for (const [namaUpper, data] of dbKelasMap.entries()) {
-      if (!newKelasSet.has(namaUpper)) {
-        // Kelas ini mau dihapus
-        if (lockedKelasSet.has(namaUpper)) {
-          // Tidak boleh dihapus!
-          throw new Error(`Kelas '${data.nama}' tidak dapat dihapus karena sudah memiliki data nilai.`);
-        } else {
-          // Boleh dihapus
-          batch.delete({ name: data.path });
+    const sheet = getKelasSheet(ss);
+    const lockedKelasSet = getLockedKelasSet(ss, sessionData.sekolahID);
+    const oldData = sheet.getDataRange().getValues();
+    oldData.shift();
+    const oldClassList = oldData.map(row => row[0]).filter(nama => nama);
+    const newClassSet = new Set(kelasList.map(k => k.toUpperCase()));
+    for (const oldClass of oldClassList) {
+      if (lockedKelasSet.has(oldClass.toUpperCase())) {
+        if (!newClassSet.has(oldClass.toUpperCase())) {
+          return { status: "gagal", message: `Kelas '${oldClass}' tidak dapat dihapus karena sudah memiliki data nilai.` };
         }
       }
     }
-
-    // 3. Cek penambahan
-    for (const nama of kelasList) {
-      if (!dbKelasMap.has(nama.toUpperCase())) {
-        // Kelas ini baru, tambahkan
-        const docId = `${sekolahID}_${nama.replace(/[^a-zA-Z0-9]/g, '_')}`; // Buat ID dokumen yang aman
-        const docPath = `${projectPath}/kelas/${docId}`;
-        const docRef = { name: docPath };
-        
-        batch.create(docRef, {
-          sekolahID: sekolahID,
-          namaKelas: nama
-        });
-      }
+    const lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+      sheet.deleteRows(2, lastRow - 1);
     }
-
-    // 4. Commit batch
-    batch.commit();
-
-    clearSiswaCache(sessionData.sekolahID); // Hapus cache siswa (karena filter kelas mungkin berubah)
-    clearLockedKelasCache(sessionData.sekolahID); // Hapus cache kelas terkunci
-    
+    if (kelasList && kelasList.length > 0) {
+      const dataToSave = kelasList.map(nama => [nama]);
+      sheet.getRange(2, 1, dataToSave.length, 1).setValues(dataToSave);
+    }
+    clearSiswaCache(sessionData.sekolahID);
+    clearLockedKelasCache(sessionData.sekolahID);
     return { status: "sukses" };
   } catch (e) {
     return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -2317,65 +1909,53 @@ function getSiswaTemplateUrl(token) {
   }
 }
 
-/**
- * [PENTING] Update 'prosesImportExcelSiswa' agar menggunakan 'getKelas' dari Firestore.
- * Ganti fungsi 'prosesImportExcelSiswa' yang Anda buat di Langkah 2 dengan versi ini.
- */
 function prosesImportExcelSiswa(token, fileData) {
   let tempExcelFileId = null;
   let tempConvertedSheetId = null;
   try {
-    const { sessionData } = validateAdminSession(token);
-    const sekolahID = sessionData.sekolahID;
-    
-    const { firestore, projectId } = getFirestoreInstance();
-    const projectPath = `projects/${projectId}/databases/(default)/documents`;
-
-    // 1. Ambil data NISN dan Urutan dari Firestore
-    const allSiswaDocs = firestore.getCollection('siswa')
-                                  .where('sekolahID', '==', sekolahID)
-                                  .getDocuments();
-    
-    const existingNisnSet = new Set();
-    let maxIdNum = 0;
-    let maxUrutan = 0;
-    allSiswaDocs.forEach(doc => {
-      const nisn = parseValue(doc.fields.nisn);
-      if (nisn) existingNisnSet.add(nisn);
-      const idNum = parseInt((parseValue(doc.fields.siswaID) || 'SIS-0').split('-')[1] || 0);
-      if (idNum > maxIdNum) maxIdNum = idNum;
-      const urutanNum = Number(parseValue(doc.fields.urutan) || 0);
-      if (urutanNum > maxUrutan) maxUrutan = urutanNum;
-    });
-
-    // 2. Ambil data Kelas dari Firestore
-    const kelasDocs = firestore.getCollection('kelas')
-                               .where('sekolahID', '==', sekolahID)
-                               .getDocuments();
-    const existingKelasSet = new Set(kelasDocs.map(doc => parseValue(doc.fields.namaKelas).trim()));
-
-    // 3. Proses file (SAMA)
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheetSiswa = getSiswaSheet(ss);
+    const sheetKelas = getKelasSheet(ss);
     const { base64, mimeType, fileName } = fileData;
     const decodedData = Utilities.base64Decode(base64.split(',')[1]);
     const blob = Utilities.newBlob(decodedData, mimeType, fileName);
     const tempExcelFile = DriveApp.createFile(blob);
     tempExcelFileId = tempExcelFile.getId();
-    const conversionResource = { title: `[TEMP] Konversi - ${fileName}`, mimeType: MimeType.GOOGLE_SHEETS };
+    const conversionResource = {
+      title: `[TEMP] Konversi - ${fileName}`,
+      mimeType: MimeType.GOOGLE_SHEETS
+    };
     const convertedFile = Drive.Files.copy(conversionResource, tempExcelFileId, { convert: true });
     tempConvertedSheetId = convertedFile.id;
     const tempSheet = SpreadsheetApp.openById(tempConvertedSheetId);
     const dataSheet = tempSheet.getSheets()[0];
     const excelData = dataSheet.getDataRange().getValues();
-    if (excelData.length <= 1) throw new Error("File Excel kosong atau hanya berisi header.");
+    if (excelData.length <= 1) {
+      throw new Error("File Excel kosong atau hanya berisi header.");
+    }
     excelData.shift();
-
-    // 4. Validasi dan Persiapan Batch
+    const dataNisn = sheetSiswa.getRange('C2:C' + sheetSiswa.getLastRow()).getValues()
+      .map(row => String(row[0]).trim())
+      .filter(nisn => nisn);
+    const existingNisnSet = new Set(dataNisn);
+    const dataKelas = sheetKelas.getRange('A2:A' + sheetKelas.getLastRow()).getValues()
+      .map(row => String(row[0]).trim())
+      .filter(kelas => kelas);
+    const existingKelasSet = new Set(dataKelas);
     const gagalList = [];
-    const batch = firestore.batch();
+    const rowsToAppend = [];
+    const existingData = sheetSiswa.getDataRange().getValues();
+    let maxIdNum = 0;
+    let maxUrutan = 0;
+    for (let i = 1; i < existingData.length; i++) {
+      const idNum = parseInt((existingData[i][0] || 'SIS-0').split('-')[1] || 0);
+      if (idNum > maxIdNum) maxIdNum = idNum;
+      const urutanNum = Number(existingData[i][8] || 0);
+      if (urutanNum > maxUrutan) maxUrutan = urutanNum;
+    }
     let nextIdNum = maxIdNum + 1;
     let nextUrutan = maxUrutan + 1;
-    let successCount = 0;
-
     for (let i = 0; i < excelData.length; i++) {
       const row = excelData[i];
       const barisKe = i + 2;
@@ -2391,62 +1971,51 @@ function prosesImportExcelSiswa(token, fileData) {
         tglLahir = String(tglLahir).trim();
       }
       const kelas = (row[6] ? String(row[6]) : '').trim();
-      
-      // Validasi
       if (!nama || !nisn || !jk || !kelas) {
-        gagalList.push({ baris: barisKe, nama: nama, nisn: nisn, alasan: "Data wajib tidak lengkap." }); continue;
+        gagalList.push({ baris: barisKe, nama: nama, nisn: nisn, alasan: "Data wajib tidak lengkap." });
+        continue;
       }
       if (existingNisnSet.has(nisn)) {
-        gagalList.push({ baris: barisKe, nama: nama, nisn: nisn, alasan: "NISN sudah terdaftar." }); continue;
+        gagalList.push({ baris: barisKe, nama: nama, nisn: nisn, alasan: "NISN sudah terdaftar." });
+        continue;
       }
       if (jk !== 'L' && jk !== 'P') {
-        gagalList.push({ baris: barisKe, nama: nama, nisn: nisn, alasan: "Jenis Kelamin harus 'L' atau 'P'." }); continue;
+        gagalList.push({ baris: barisKe, nama: nama, nisn: nisn, alasan: "Jenis Kelamin harus 'L' atau 'P'." });
+        continue;
       }
       if (!existingKelasSet.has(kelas)) {
-        gagalList.push({ baris: barisKe, nama: nama, nisn: nisn, alasan: `Kelas '${kelas}' tidak ditemukan.` }); continue;
+        gagalList.push({ baris: barisKe, nama: nama, nisn: nisn, alasan: `Kelas '${kelas}' tidak ditemukan.` });
+        continue;
       }
-
-      // Buat dokumen untuk batch
       const newSiswaID = "SIS-" + nextIdNum;
-      const docId = `${sekolahID}_${newSiswaID}`;
-      const fullDocPath = `${projectPath}/siswa/${docId}`;
-      const docRef = { name: fullDocPath };
-      
-      const newDoc = {
-        sekolahID: sekolahID, siswaID: newSiswaID, namaSiswa: nama, nisn: nisn,
-        nisLokal: nisLokal || null, jenisKelamin: jk, tempatLahir: tempatLahir || null,
-        tglLahir: tglLahir || null, kelas: kelas, urutan: nextUrutan
-      };
-
-      batch.create(docRef, newDoc);
-      
+      const formattedNisn = nisn ? "'" + nisn : null;
+      const formattedNisLokal = nisLokal ? "'" + nisLokal : null;
+      const newRow = [
+        newSiswaID, nama, formattedNisn, formattedNisLokal, jk,
+        tempatLahir, (tglLahir || null), kelas, nextUrutan
+      ];
+      rowsToAppend.push(newRow);
       existingNisnSet.add(nisn);
       nextIdNum++;
       nextUrutan++;
-      successCount++;
     }
-
-    // 5. Commit Batch
-    if (successCount > 0) {
-      batch.commit();
+    if (rowsToAppend.length > 0) {
+      sheetSiswa.getRange(sheetSiswa.getLastRow() + 1, 1, rowsToAppend.length, rowsToAppend[0].length)
+        .setValues(rowsToAppend);
     }
-
-    // 6. Cleanup
     DriveApp.getFileById(tempExcelFileId).setTrashed(true);
     DriveApp.getFileById(tempConvertedSheetId).setTrashed(true);
     clearSiswaCache(sessionData.sekolahID);
-    
     return {
       status: "sukses",
       totalDiProses: excelData.length,
-      berhasilDiUpload: successCount,
+      berhasilDiUpload: rowsToAppend.length,
       gagalDiUpload: gagalList.length,
       dataGagal: gagalList
     };
   } catch (e) {
     if (tempExcelFileId) { DriveApp.getFileById(tempExcelFileId).setTrashed(true); }
     if (tempConvertedSheetId) { DriveApp.getFileById(tempConvertedSheetId).setTrashed(true); }
-    Logger.log("Gagal prosesImportExcelSiswa (Firestore): " + e.message);
     return { status: "gagal", message: "Terjadi error: " + e.message };
   }
 }
@@ -2508,48 +2077,47 @@ function moveSiswaUrutan(token, siswaID, direction) {
   }
 }
 
-/**
- * [BARU/DIGANTI] Menyimpan urutan siswa secara batch ke Firestore.
- */
 function saveSiswaUrutanBatch(token, urutanData) {
-  let sekolahID, sessionData;
+  let spreadsheetID, sessionData;
   try {
     const session = validateAdminSession(token);
-    sekolahID = session.sessionData.sekolahID;
+    spreadsheetID = session.spreadsheetID;
     sessionData = session.sessionData;
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
-  
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(15000);
   try {
-    const { firestore, projectId } = getFirestoreInstance();
-    const projectPath = `projects/${projectId}/databases/(default)/documents`;
-    const batch = firestore.batch();
-
-    urutanData.forEach(item => {
-      const docId = `${sekolahID}_${item.id}`;
-      const fullDocPath = `${projectPath}/siswa/${docId}`;
-      const docRef = { name: fullDocPath };
-      
-      const fieldsToUpdate = {
-        urutan: item.urutan
-      };
-
-      // Update dokumen di batch, dengan mask
-      batch.update(docRef, fieldsToUpdate, { fieldPaths: ["urutan"] });
-    });
-
-    batch.commit();
-    
-    clearSiswaCache(sessionData.sekolahID);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getSiswaSheet(ss);
+    const dataRange = sheet.getDataRange();
+    const data = dataRange.getValues();
+    const urutanMap = new Map(urutanData.map(item => [item.id, item.urutan]));
+    let changesMade = false;
+    for (let i = 1; i < data.length; i++) {
+      const id = data[i][0];
+      const newUrutan = urutanMap.get(id);
+      if (newUrutan !== undefined && data[i][8] != newUrutan) {
+        data[i][8] = newUrutan;
+        changesMade = true;
+      }
+    }
+    if (changesMade) {
+      const valuesToUpdate = data.slice(1).map(row => [row[8]]);
+      if (valuesToUpdate.length > 0) {
+        sheet.getRange(2, 9, valuesToUpdate.length, 1).setValues(valuesToUpdate);
+      }
+      clearSiswaCache(sessionData.sekolahID);
+    }
     return { status: "sukses" };
   } catch (e) {
-    Logger.log("Gagal saveSiswaUrutanBatch (Firestore): " + e.message);
     return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
   }
 }
 
-/*
 function getNilaiUjianSheet(ss) {
   let userSpreadsheet = ss;
   if (!userSpreadsheet) {
@@ -2566,7 +2134,6 @@ function getNilaiUjianSheet(ss) {
   }
   return sheet;
 }
-*/
 
 function getNilaiUjianGridData(token, tipeUjian) {
   try {
@@ -2584,7 +2151,7 @@ function getNilaiUjianGridData(token, tipeUjian) {
     if (cachedData != null) {
       return JSON.parse(cachedData);
     }
-    
+
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheetSiswa = getSiswaSheet(ss);
     const dataSiswa = sheetSiswa.getDataRange().getValues();
@@ -2597,43 +2164,27 @@ function getNilaiUjianGridData(token, tipeUjian) {
     });
 
     let mapelListFull = getMapelDataInternal(ss, sekolahID);
+    
     if (isGuru) {
       mapelListFull = mapelListFull.filter(m => assignedMapelSet.has(m.id));
     }
+
     let filteredMapel = (tipeUjian === 'UM') ? mapelListFull.filter(m => m.isUS) : mapelListFull.filter(m => m.isUP);
     const mapelList = filteredMapel.map(m => ({ id: m.id, nama: m.nama }));
 
-    const { firestore } = getFirestoreInstance();
+    const sheetNilai = getNilaiUjianSheet(ss);
+    const dataNilai = sheetNilai.getDataRange().getValues();
+    dataNilai.shift();
     const nilaiData = {};
-    const fieldToGet = (tipeUjian === 'UM') ? 'um' : 'up';
-
-    const documents = firestore.getCollection('nilai_ujian')
-                               .where('sekolahID', '==', sekolahID)
-                               .getDocuments();
-
-    for (const doc of documents) {
-      const fields = doc.fields;
-      if (!fields.siswaID || !fields.mapelID) continue;
-      
-      const key = `${fields.siswaID.stringValue}_${fields.mapelID.stringValue}`;
-      let nilai = null;
-
-      if (fields[fieldToGet] && fields[fieldToGet].integerValue) {
-        nilai = parseInt(fields[fieldToGet].integerValue);
-      } else if (fields[fieldToGet] && fields[fieldToGet].doubleValue) {
-        nilai = parseFloat(fields[fieldToGet].doubleValue);
-      }
-      
-      if (nilai !== null) {
-        nilaiData[key] = nilai;
-      }
-    }
+    dataNilai.forEach(row => {
+      const key = `${row[0]}_${row[1]}`;
+      nilaiData[key] = (tipeUjian === 'UM') ? row[2] : row[3];
+    });
 
     const response = { status: "sukses", data: { siswaList, mapelList, nilaiData } };
     userCache.put(cacheKey, JSON.stringify(response), 600);
     return response;
   } catch (e) {
-    Logger.log(`Gagal getNilaiUjianGridData (Firestore): ${e.message} ${e.stack}`);
     return { status: "gagal", message: e.message };
   }
 }
@@ -2641,7 +2192,7 @@ function getNilaiUjianGridData(token, tipeUjian) {
 function saveNilaiUjianBatch(token, dataToSave) {
   try {
     const sessionData = validateAndRefreshSession(token);
-    const sekolahID = sessionData.sekolahID;
+    const spreadsheetID = sessionData.spreadsheetID;
     const isGuru = (sessionData.role === 'guru');
 
     if (isGuru) {
@@ -2653,57 +2204,76 @@ function saveNilaiUjianBatch(token, dataToSave) {
       }
     }
 
-    const { firestore, projectId } = getFirestoreInstance();
-    const projectPath = `projects/${projectId}/databases/(default)/documents`;
-    const batch = firestore.batch();
-    let tipeUjianDisimpan = null;
-
-    dataToSave.forEach(item => {
-      if (!tipeUjianDisimpan) tipeUjianDisimpan = item.tipeUjian;
+    const lock = LockService.getDocumentLock();
+    lock.waitLock(15000);
+    try {
+      const ss = SpreadsheetApp.openById(spreadsheetID);
+      const sheet = getNilaiUjianSheet(ss);
+      const data = sheet.getDataRange().getValues();
+      const dataMap = new Map();
+      for (let i = 1; i < data.length; i++) {
+        dataMap.set(`${data[i][0]}_${data[i][1]}`, {row: i + 1, um: data[i][2], up: data[i][3]});
+      }
+      const rowsToAppend = [];
+      let tipeUjianDisimpan = null;
       
-      const docId = `${sekolahID}_${item.siswaId}_${item.mapelId}`;
-      const fullDocPath = `${projectPath}/nilai_ujian/${docId}`;
-      const docRef = { name: fullDocPath };
+      dataToSave.forEach(item => {
+        if (!tipeUjianDisimpan) tipeUjianDisimpan = item.tipeUjian;
+        const key = `${item.siswaId}_${item.mapelId}`;
+        let nilaiBaru = null;
+        if (item.nilai !== "" && item.nilai != null) {
+          let num = parseFloat(item.nilai);
+          if (!isNaN(num) && num >= 0 && num <= 100) nilaiBaru = num;
+        }
+        
+        const existing = dataMap.get(key);
+        
+        if (existing !== undefined) {
+          const colIdx = (item.tipeUjian === 'UM') ? 3 : 4;
+          const oldNilai = (item.tipeUjian === 'UM') ? existing.um : existing.up;
+          
+          if (oldNilai !== nilaiBaru) {
+            sheet.getRange(existing.row, colIdx).setValue(nilaiBaru);
+            if(item.tipeUjian === 'UM') existing.um = nilaiBaru;
+            else existing.up = nilaiBaru;
+          }
+        } else {
+          let newRow = [item.siswaId, item.mapelId, null, null];
+          newRow[(item.tipeUjian === 'UM') ? 2 : 3] = nilaiBaru;
+          rowsToAppend.push(newRow);
+          dataMap.set(key, {
+            row: data.length + rowsToAppend.length, 
+            um: newRow[2], 
+            up: newRow[3]
+          });
+        }
+      });
       
-      let nilaiBaru = null;
-      if (item.nilai !== "" && item.nilai != null) {
-        let num = parseFloat(item.nilai);
-        if (!isNaN(num) && num >= 0 && num <= 100) nilaiBaru = num;
+      if (rowsToAppend.length > 0) {
+        sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, 4).setValues(rowsToAppend);
       }
       
-      const data = {
-        sekolahID: sekolahID,
-        siswaID: item.siswaId,
-        mapelID: item.mapelId,
-        [item.tipeUjian === 'UM' ? 'um' : 'up']: nilaiBaru
-      };
+      const sekolahID = sessionData.sekolahID;
+      const userCache = CacheService.getUserCache();
+      
+      if (tipeUjianDisimpan) {
+         userCache.remove(NILAI_GRID_CACHE_KEY_PREFIX + tipeUjianDisimpan + "_" + sekolahID);
+         if (isGuru) {
+             userCache.remove(NILAI_GRID_CACHE_KEY_PREFIX + tipeUjianDisimpan + "_" + sekolahID + `_GURU_${sessionData.namaGuru.replace(/\s+/g, '')}`);
+         }
+      } else {
+         clearNilaiUjianCache(sekolahID);
+      }
 
-      batch.set(docRef, data, { merge: true });
-    });
-
-    let response = batch.commit();
-    if (response.error) {
-      throw new Error("Gagal commit batch Ujian: " + response.error.message);
+      if (!isGuru) {
+        clearRekapNilaiCache(sekolahID);
+      }
+      clearLockedKelasCache(sekolahID);
+      return { status: "sukses", message: "Nilai tersimpan." };
+    } finally {
+      lock.releaseLock();
     }
-
-    const userCache = CacheService.getUserCache();
-    if (tipeUjianDisimpan) {
-        userCache.remove(NILAI_GRID_CACHE_KEY_PREFIX + tipeUjianDisimpan + "_" + sekolahID);
-        if (isGuru) {
-            userCache.remove(NILAI_GRID_CACHE_KEY_PREFIX + tipeUjianDisimpan + "_" + sekolahID + `_GURU_${sessionData.namaGuru.replace(/\s+/g, '')}`);
-        }
-    } else {
-        clearNilaiUjianCache(sekolahID);
-    }
-    if (!isGuru) {
-      clearRekapNilaiCache(sekolahID);
-    }
-    clearLockedKelasCache(sekolahID);
-    
-    return { status: "sukses", message: "Nilai tersimpan." };
-
   } catch (e) {
-    Logger.log(`Gagal saveNilaiUjianBatch (Firestore): ${e.message} ${e.stack}`);
     return { status: "gagal", message: e.message };
   }
 }
@@ -2810,11 +2380,7 @@ function getRekapitulasiNilaiData(token) {
     if (siswaData.status !== 'sukses') throw new Error(siswaData.message);
     const siswaList = siswaData.siswa.map(s => ({ id: s.id, nama: s.nama, nisn: s.nisn, kelas: s.kelas }));
     const mapelListFull = getMapelDataInternal(ss, sekolahID);
-    
-    // --- PERUBAHAN DI SINI ---
-    const { mapelList, nilaiRekapMap } = getRekapUjianInternal(ss, siswaList, mapelListFull, sekolahID);
-    // --- AKHIR PERUBAHAN ---
-
+    const { mapelList, nilaiRekapMap } = getRekapUjianInternal(ss, siswaList, mapelListFull);
     const nilaiRekapDataObj = {};
     nilaiRekapMap.forEach((value, key) => { nilaiRekapDataObj[key] = value; });
     const response = { status: "sukses", data: { siswaList, mapelList, nilaiRekapData: nilaiRekapDataObj } };
@@ -2843,11 +2409,7 @@ function getRekapitulasiNilaiRaporData(token) {
     if (siswaData.status !== 'sukses') throw new Error(siswaData.message);
     const siswaList = siswaData.siswa.map(s => ({ id: s.id, nama: s.nama, nisn: s.nisn, kelas: s.kelas }));
     const mapelListFull = getMapelDataInternal(ss, sekolahID);
-
-    // --- PERUBAHAN DI SINI ---
-    const { mapelList, nilaiRekapMap } = getRekapRaporInternal(ss, siswaList, mapelListFull, semesterIds, sekolahID);
-    // --- AKHIR PERUBAHAN ---
-    
+    const { mapelList, nilaiRekapMap } = getRekapRaporInternal(ss, siswaList, mapelListFull, semesterIds);
     const nilaiRekapDataObj = {};
     nilaiRekapMap.forEach((value, key) => { nilaiRekapDataObj[key] = value; });
     const response = {
@@ -2861,51 +2423,51 @@ function getRekapitulasiNilaiRaporData(token) {
   }
 }
 
-/**
- * [DIGANTI] Mengambil pengaturan semester dari Firestore.
- */
 function getSemesterSetting(token) {
   try {
     const { sessionData, spreadsheetID } = validateAdminSession(token);
-    const config = getSekolahConfigData(sessionData.sekolahID, spreadsheetID);
-
-    return { 
-      status: "sukses", 
-      jenjang: sessionData.jenjang, 
-      setting: config.jumlahSemester 
-    };
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getPengaturanSheet(ss);
+    const data = sheet.getRange('A1:B' + sheet.getLastRow()).getValues();
+    let jumlahSemester = 5;
+    for (let i = 0; i < data.length; i++) {
+      if (data[i][0] === 'Jumlah_Semester') {
+        jumlahSemester = data[i][1];
+        break;
+      }
+    }
+    return { status: "sukses", jenjang: sessionData.jenjang, setting: jumlahSemester };
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
 }
 
-/**
- * [DIGANTI] Menyimpan pengaturan semester ke Firestore.
- */
 function saveSemesterSetting(token, jumlahSemester) {
   try {
-    const { sessionData } = validateAdminSession(token);
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
     const jenjang = sessionData.jenjang;
     const settingAngka = parseInt(jumlahSemester, 10);
-    
     if (settingAngka !== 3 && settingAngka !== 5) return { status: "gagal", message: "Nilai semester tidak valid." };
     if (jenjang !== 'SD/MI' && settingAngka === 3) return { status: "gagal", message: "3 semester hanya untuk SD/MI." };
-
-    const dataToSave = {
-      jumlahSemester: settingAngka
-    };
-
-    const result = _saveSekolahConfig(sessionData.sekolahID, dataToSave, token);
-    if (result.status === 'sukses') {
-      clearNilaiRaporCache(sessionData.sekolahID);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getPengaturanSheet(ss);
+    const data = sheet.getRange('A1:B' + sheet.getLastRow()).getValues();
+    let found = false;
+    for (let i = 0; i < data.length; i++) {
+      if (data[i][0] === 'Jumlah_Semester') {
+        sheet.getRange('B' + (i + 1)).setValue(settingAngka);
+        found = true;
+        break;
+      }
     }
-    return result;
+    if (!found) sheet.appendRow(['Jumlah_Semester', settingAngka]);
+    clearNilaiRaporCache(sessionData.sekolahID);
+    return { status: "sukses" };
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
 }
 
-/*
 function getNilaiRaporSheet(ss) {
   let userSpreadsheet = ss;
   if (!userSpreadsheet) {
@@ -2935,7 +2497,6 @@ function getNilaiRaporSheet(ss) {
   }
   return sheet;
 }
-*/
 
 function getSemesterList(token) {
   try {
@@ -2973,57 +2534,39 @@ function getNilaiRaporGridData(token, semesterId) {
   try {
     const { sessionData, spreadsheetID } = validateAdminSession(token);
     const sekolahID = sessionData.sekolahID;
-    
     const userCache = CacheService.getUserCache();
     const cacheKey = NILAI_RAPOR_GRID_CACHE_KEY_PREFIX + semesterId + "_" + sekolahID;
     const cachedData = userCache.get(cacheKey);
     if (cachedData != null) {
       return JSON.parse(cachedData);
     }
-    
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const siswaData = getSiswa(token);
     if (siswaData.status !== 'sukses') throw new Error(siswaData.message);
     const siswaList = siswaData.siswa.map(s => ({ id: s.id, nama: s.nama, nisn: s.nisn, kelas: s.kelas }));
-    
     const mapelListFull = getMapelDataInternal(ss, sekolahID);
     const filteredMapelList = mapelListFull.filter(m => m.isUS === true || m.isUP === true);
     const mapelList = filteredMapelList.map(m => ({ id: m.id, nama: m.nama }));
-
-    const { firestore } = getFirestoreInstance();
+    const sheetNilai = getNilaiRaporSheet(ss);
+    const dataNilai = sheetNilai.getDataRange().getValues();
+    dataNilai.shift();
     const nilaiMapP = new Map();
     const nilaiMapK = new Map();
     const nilaiMapRekap = new Map();
-
-    const documents = firestore.getCollection('nilai_rapor')
-                               .where('sekolahID', '==', sekolahID)
-                               .where('semesterID', '==', semesterId)
-                               .getDocuments();
-
-    for (const doc of documents) {
-      const fields = doc.fields;
-      if (!fields.siswaID || !fields.mapelID) continue;
-      
-      const key = `${fields.siswaID.stringValue}_${fields.mapelID.stringValue}`;
-
-      let p = null, k = null;
-      if (fields.p && (fields.p.integerValue || fields.p.doubleValue)) {
-         p = parseFloat(fields.p.integerValue || fields.p.doubleValue);
-         nilaiMapP.set(key, p);
+    dataNilai.forEach(row => {
+      if (row[2] === semesterId) {
+        const key = `${row[0]}_${row[1]}`;
+        if (row[3] !== "" && row[3] != null) nilaiMapP.set(key, row[3]);
+        if (row[4] !== "" && row[4] != null) nilaiMapK.set(key, row[4]);
+        const p = (row[3] === "" || row[3] == null) ? null : parseFloat(row[3]);
+        const k = (row[4] === "" || row[4] == null) ? null : parseFloat(row[4]);
+        let rekapVal = null;
+        if (p != null && !isNaN(p) && k != null && !isNaN(k)) rekapVal = (p + k) / 2;
+        else if (p != null && !isNaN(p)) rekapVal = p;
+        else if (k != null && !isNaN(k)) rekapVal = k;
+        if (rekapVal !== null) nilaiMapRekap.set(key, Math.round(rekapVal));
       }
-      if (fields.k && (fields.k.integerValue || fields.k.doubleValue)) {
-         k = parseFloat(fields.k.integerValue || fields.k.doubleValue);
-         nilaiMapK.set(key, k);
-      }
-
-      let rekapVal = null;
-      if (p != null && k != null) rekapVal = (p + k) / 2;
-      else if (p != null) rekapVal = p;
-      else if (k != null) rekapVal = k;
-      
-      if (rekapVal !== null) nilaiMapRekap.set(key, Math.round(rekapVal));
-    }
-
+    });
     const nilaiDataP = {};
     const nilaiDataK = {};
     const nilaiDataRekap = {};
@@ -3035,87 +2578,95 @@ function getNilaiRaporGridData(token, semesterId) {
         if (nilaiMapRekap.has(key)) nilaiDataRekap[key] = nilaiMapRekap.get(key);
       });
     });
-    
     const semesterListData = getSemesterList(token);
     let namaSemester = semesterId;
     if (semesterListData.status === 'sukses') {
       const sem = semesterListData.semesterList.find(s => s.id === semesterId);
       if (sem) namaSemester = sem.nama;
     }
-    
     const response = {
       status: "sukses",
       namaSemester: namaSemester,
       dataP: { siswaList, mapelList, nilaiData: nilaiDataP },
       dataK: { siswaList, mapelList, nilaiData: nilaiDataK },
-      dataRekap: { siswaList, mapelList, nilaiData: nilaiDataRekap }
+      dataRekap: { siswaList, mapelList, nilaiRekapData: nilaiDataRekap }
     };
     userCache.put(cacheKey, JSON.stringify(response), 600);
     return response;
   } catch (e) {
-    Logger.log(`Gagal getNilaiRaporGridData (Firestore): ${e.message} ${e.stack}`);
     return { status: "gagal", message: e.message };
   }
 }
 
 function saveNilaiRaporBatch(token, dataToSave, tipeNilai) {
-  let sekolahID, sessionData;
+  let spreadsheetID, sessionData;
   try {
     const session = validateAdminSession(token);
-    sekolahID = session.sessionData.sekolahID;
+    spreadsheetID = session.spreadsheetID;
     sessionData = session.sessionData;
     if (!tipeNilai || (tipeNilai !== 'P' && tipeNilai !== 'K')) return { status: "gagal", message: "Tipe nilai tidak valid." };
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
-
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(15000);
   try {
-    const { firestore, projectId } = getFirestoreInstance();
-    const projectPath = `projects/${projectId}/databases/(default)/documents`;
-    const batch = firestore.batch();
-    const semesterIdsToClear = new Set();
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getNilaiRaporSheet(ss);
+    const data = sheet.getDataRange().getValues();
+    const kolomIndex = (tipeNilai === 'P') ? 3 : 4;
+    const kolomNomor = kolomIndex + 1;
+    
+    const dataMap = new Map();
+    for (let i = 1; i < data.length; i++) {
+      dataMap.set(`${data[i][0]}_${data[i][1]}_${data[i][2]}`, {row: i + 1, value: data[i][kolomIndex]});
+    }
 
+    const rowsToAppend = [];
+    
     dataToSave.forEach(item => {
       if (!item.semesterId) return;
-      semesterIdsToClear.add(item.semesterId);
-      
-      const docId = `${sekolahID}_${item.siswaId}_${item.mapelId}_${item.semesterId}`;
-      const fullDocPath = `${projectPath}/nilai_rapor/${docId}`;
-      const docRef = { name: fullDocPath };
-      
+      const key = `${item.siswaId}_${item.mapelId}_${item.semesterId}`;
       let nilaiAngka = null;
       if (item.nilai !== "" && item.nilai != null) {
         let num = parseFloat(item.nilai);
         if (!isNaN(num) && Number.isInteger(num) && num >= 0 && num <= 100) nilaiAngka = num;
       }
       
-      const data = {
-        sekolahID: sekolahID,
-        siswaID: item.siswaId,
-        mapelID: item.mapelId,
-        semesterID: item.semesterId,
-        [tipeNilai === 'P' ? 'p' : 'k']: nilaiAngka
-      };
-
-      batch.set(docRef, data, { merge: true });
+      const existing = dataMap.get(key);
+      
+      if (existing !== undefined) {
+        if (existing.value !== nilaiAngka) {
+          sheet.getRange(existing.row, kolomNomor).setValue(nilaiAngka);
+          existing.value = nilaiAngka;
+        }
+      } else {
+        let newRow = [item.siswaId, item.mapelId, item.semesterId, null, null];
+        newRow[kolomIndex] = nilaiAngka;
+        rowsToAppend.push(newRow);
+        dataMap.set(key, {
+          row: data.length + rowsToAppend.length, 
+          value: nilaiAngka
+        });
+      }
     });
 
-    let response = batch.commit();
-    if (response.error) {
-      throw new Error("Gagal commit batch Rapor: " + response.error.message);
+    if (rowsToAppend.length > 0) {
+      sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, 5).setValues(rowsToAppend);
     }
 
+    const sekolahID = sessionData.sekolahID;
     const userCache = CacheService.getUserCache();
-    semesterIdsToClear.forEach(semId => {
-      userCache.remove(NILAI_RAPOR_GRID_CACHE_KEY_PREFIX + semId + "_" + sekolahID);
+    new Set(dataToSave.map(i => i.semesterId)).forEach(semId => {
+      if (semId) userCache.remove(NILAI_RAPOR_GRID_CACHE_KEY_PREFIX + semId + "_" + sekolahID);
     });
     clearRekapNilaiRaporCache(sekolahID);
     clearLockedKelasCache(sekolahID);
-    
     return { status: "sukses", message: "Nilai rapor tersimpan." };
   } catch (e) {
-    Logger.log(`Gagal saveNilaiRaporBatch (Firestore): ${e.message} ${e.stack}`);
     return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -3427,83 +2978,45 @@ function prosesUploadExcelNilaiRapor(token, fileData, semesterIdFromModal) {
   }
 }
 
-// --- GANTI FUNGSI INI DI Kode.gs.html ---
-/**
- * [PERBAIKAN] Mengambil data mapel dari Firestore, dengan cache.
- */
-function getMapelDataInternal(ss, sekolahID) { // 'ss' tidak lagi dipakai
+function getMapelDataInternal(ss, sekolahID) {
   const cacheKey = MAPEL_CACHE_KEY + "_" + sekolahID;
   const userCache = CacheService.getUserCache();
   const cachedMapel = userCache.get(cacheKey);
   if (cachedMapel != null) {
     return JSON.parse(cachedMapel);
   }
-
-  const { firestore } = getFirestoreInstance();
-  const documents = firestore.getCollection('mapel')
-                             .where('sekolahID', '==', sekolahID)
-                             .getDocuments();
-
-  const mapel = documents.map(doc => {
-    const fields = doc.fields; // 'fields' sudah bersih
-    return {
-      id: fields.mapelID,
-      nama: fields.namaMapel,
-      isUS: fields.isUS || false,
-      isUP: fields.isUP || false,
-      urutan: Number(fields.urutan || 0)
-    };
-  }).filter(row => row.id).sort((a, b) => a.urutan - b.urutan);
-
+  const sheetMapel = getMapelSheet(ss);
+  const data = sheetMapel.getDataRange().getValues();
+  data.shift();
+  const mapel = data.map((row, index) => ({
+    id: row[0],
+    nama: row[1],
+    isUS: row[2] || false,
+    isUP: row[3] || false,
+    urutan: Number(row[4] || index + 1)
+  })).filter(row => row.id).sort((a, b) => a.urutan - b.urutan);
   userCache.put(cacheKey, JSON.stringify(mapel), 600);
   return mapel;
 }
 
-
-/**
- * [HELPER] Fungsi untuk mem-parsing nilai dari respons Firestore.
- * (Anda seharusnya sudah memiliki ini dari langkah sebelumnya)
- */
-/*
-function parseValue(value) {
-  if (!value) return null;
-  if (value.stringValue) return value.stringValue;
-  if (value.integerValue) return parseInt(value.integerValue, 10);
-  if (value.doubleValue) return parseFloat(value.doubleValue);
-  if (value.booleanValue) return value.booleanValue;
-  if (value.hasOwnProperty('nullValue')) return null;
-  if (value.timestampValue) return value.timestampValue;
-  if (Array.isArray(value.arrayValue?.values)) {
-    return value.arrayValue.values.map(parseValue);
-  }
-  return null; 
-}
-*/
-
-function getRekapUjianInternal(ss, siswaList, mapelListFull, sekolahID) {
+function getRekapUjianInternal(ss, siswaList, mapelListFull) {
   
     const filteredMapelList = mapelListFull.filter(m => m.isUS === true || m.isUP === true);
     const mapelFlags = new Map(filteredMapelList.map(m => [m.id, { isUS: m.isUS, isUP: m.isUP }]));
     
-    const { firestore } = getFirestoreInstance();
-    const nilaiMap = new Map();
+    const sheetNilai = getNilaiUjianSheet(ss);
+    const dataNilai = sheetNilai.getDataRange().getValues();
+    dataNilai.shift(); 
     
-    const documents = firestore.getCollection('nilai_ujian')
-                               .where('sekolahID', '==', sekolahID)
-                               .getDocuments();
-
-    for (const doc of documents) {
-      const fields = doc.fields;
-      if (!fields.siswaID || !fields.mapelID) continue;
-      
-      const key = `${fields.siswaID.stringValue}_${fields.mapelID.stringValue}`;
-      
-      let um = null, up = null;
-      if (fields.um && (fields.um.integerValue || fields.um.doubleValue)) um = parseFloat(fields.um.integerValue || fields.um.doubleValue);
-      if (fields.up && (fields.up.integerValue || fields.up.doubleValue)) up = parseFloat(fields.up.integerValue || fields.up.doubleValue);
-      
-      nilaiMap.set(key, { um: um, up: up });
-    }
+    const nilaiMap = new Map();
+    dataNilai.forEach(row => {
+      const siswaId = row[0];
+      const mapelId = row[1];
+      const nilaiUM = row[2];
+      const nilaiUP = row[3];
+      const key = `${siswaId}_${mapelId}`;
+      nilaiMap.set(key, { um: nilaiUM, up: nilaiUP });
+    });
     
     const nilaiRekapData = new Map();
     siswaList.forEach(siswa => {
@@ -3538,37 +3051,38 @@ function getRekapUjianInternal(ss, siswaList, mapelListFull, sekolahID) {
     };
 }
 
-function getRekapRaporInternal(ss, siswaList, mapelListFull, semesterIds, sekolahID) {
+function getRekapRaporInternal(ss, siswaList, mapelListFull, semesterIds) {
 
   const semesterIdSet = new Set(semesterIds);
   const semesterCount = semesterIds.length;
   
   const filteredMapelList = mapelListFull.filter(m => m.isUS === true || m.isUP === true);
   
-  const { firestore } = getFirestoreInstance();
+  const sheetNilai = getNilaiRaporSheet(ss);
+  const dataNilai = sheetNilai.getDataRange().getValues();
+  dataNilai.shift(); 
+  
   const nilaiMap = new Map();
-
-  const documents = firestore.getCollection('nilai_rapor')
-                             .where('sekolahID', '==', sekolahID)
-                             .getDocuments();
-
-  for (const doc of documents) {
-    const fields = doc.fields;
-    if (!fields.siswaID || !fields.mapelID || !fields.semesterID) continue;
-
-    const siswaId = fields.siswaID.stringValue;
-    const mapelId = fields.mapelID.stringValue;
-    const semId = fields.semesterID.stringValue;
+  dataNilai.forEach(row => {
+    const siswaId = row[0];
+    const mapelId = row[1];
+    const semId = row[2];
+    const nilaiP = parseFloat(row[3]); 
+    const nilaiK = parseFloat(row[4]); 
     
     if (semesterIdSet.has(semId)) {
-      let nilaiP = null, nilaiK = null;
-      if (fields.p && (fields.p.integerValue || fields.p.doubleValue)) nilaiP = parseFloat(fields.p.integerValue || fields.p.doubleValue);
-      if (fields.k && (fields.k.integerValue || fields.k.doubleValue)) nilaiK = parseFloat(fields.k.integerValue || fields.k.doubleValue);
       
       let nilaiAkhirSem = null;
-      if (nilaiP != null && nilaiK != null) nilaiAkhirSem = (nilaiP + nilaiK) / 2;
-      else if (nilaiP != null) nilaiAkhirSem = nilaiP;
-      else if (nilaiK != null) nilaiAkhirSem = nilaiK;
+      const pIsValid = !isNaN(nilaiP);
+      const kIsValid = !isNaN(nilaiK);
+      
+      if (pIsValid && kIsValid) {
+        nilaiAkhirSem = (nilaiP + nilaiK) / 2;
+      } else if (pIsValid) {
+        nilaiAkhirSem = nilaiP;
+      } else if (kIsValid) {
+        nilaiAkhirSem = nilaiK;
+      }
 
       if (nilaiAkhirSem !== null) {
         const key = `${siswaId}_${mapelId}`;
@@ -3578,7 +3092,7 @@ function getRekapRaporInternal(ss, siswaList, mapelListFull, semesterIds, sekola
         nilaiMap.get(key).push(nilaiAkhirSem);
       }
     }
-  }
+  });
   
   const nilaiRekapData = new Map();
   siswaList.forEach(siswa => {
@@ -3673,9 +3187,7 @@ function recalculateIjazahData(token) {
     const mapelListFull = getMapelDataInternal(ss, sessionData.sekolahID);
     const mapelIjazah = mapelListFull.filter(m => m.isUS || m.isUP);
     
-    // --- PERUBAHAN DI SINI ---
-    const { nilaiRekapMap: nilaiUjian } = getRekapUjianInternal(ss, siswaList, mapelListFull, sessionData.sekolahID);
-    // --- AKHIR PERUBAHAN ---
+    const { nilaiRekapMap: nilaiUjian } = getRekapUjianInternal(ss, siswaList, mapelListFull);
     
     const semesterIds = [];
     const jenjang = sessionData.jenjang;
@@ -3687,10 +3199,7 @@ function recalculateIjazahData(token) {
     } else {
        semesterIds.push('K10_S1','K10_S2','K11_S1','K11_S2','K12_S1');
     }
-
-    // --- PERUBAHAN DI SINI ---
-    const { nilaiRekapMap: nilaiRapor } = getRekapRaporInternal(ss, siswaList, mapelListFull, semesterIds, sessionData.sekolahID);
-    // --- AKHIR PERUBAHAN ---
+    const { nilaiRekapMap: nilaiRapor } = getRekapRaporInternal(ss, siswaList, mapelListFull, semesterIds);
 
     const dataToAppend = [];
     siswaList.forEach(siswa => {
@@ -3987,22 +3496,18 @@ function clearAllCaches(token) {
 
 function getValidationData(token) {
   try {
-    const { sessionData, spreadsheetID } = validateAdminSession(token);
-    const sekolahID = sessionData.sekolahID;
+    const { spreadsheetID } = validateAdminSession(token);
     const ss = SpreadsheetApp.openById(spreadsheetID);
-    
-    // 1. Ambil data master dari Google Sheets (Siswa, Mapel, Semester)
     const siswaSheet = getSiswaSheet(ss);
     const siswaDataValues = siswaSheet.getDataRange().getValues();
     siswaDataValues.shift();
     const siswaList = siswaDataValues.map(s => ({ id: s[0], nama: s[1], nisn: s[2], kelas: s[7], urutan: s[8] }))
       .sort((a, b) => a.kelas.localeCompare(b.kelas) || (Number(a.urutan) || 0) - (Number(b.urutan) || 0));
-
-    const mapelListFull = getMapelDataInternal(ss, sekolahID);
+    const session = validateAdminSession(token);
+    const mapelListFull = getMapelDataInternal(ss, session.sessionData.sekolahID);
     const requiredMapelList = mapelListFull.filter(m => m.isUS === true || m.isUP === true);
     const requiredMapelIds = new Set(requiredMapelList.map(m => m.id));
     const mapelInfoMap = new Map(requiredMapelList.map(m => [m.id, { isUS: m.isUS, isUP: m.isUP }]));
-
     const semesterListData = getSemesterList(token);
     if (semesterListData.status !== 'sukses') throw new Error("Gagal mengambil daftar semester.");
     const requiredSemesterList = semesterListData.semesterList;
@@ -4011,94 +3516,52 @@ function getValidationData(token) {
       return { ...sem, shortCode: (parts.length === 2) ? `${parts[0].replace('K', '')}.${parts[1].replace('S', '')}` : '' };
     });
     const requiredSemesterIdSet = new Set(requiredSemesterList.map(s => s.id));
-
-    // 2. Ambil data nilai dari Firestore
-    const { firestore } = getFirestoreInstance();
-    const raporMap = new Map(); // Map<SiswaID, Map<MapelID, Map<SemesterID, {P: bool, K: bool}>>>
-    const ujianMap = new Map(); // Map<SiswaID, Map<MapelID, {UM: bool, UP: bool}>>
-
-    // Kueri Nilai Rapor
-    const raporDocs = firestore.getCollection('nilai_rapor')
-                               .where('sekolahID', '==', sekolahID)
-                               .getDocuments();
-                               
-    for (const doc of raporDocs) {
-      const fields = doc.fields;
-      if (!fields.siswaID || !fields.mapelID || !fields.semesterID) continue;
-      
-      const siswaId = fields.siswaID.stringValue;
-      const mapelId = fields.mapelID.stringValue;
-      const semId = fields.semesterID.stringValue;
-
-      if (requiredSemesterIdSet.has(semId) && requiredMapelIds.has(mapelId)) {
-        if (!raporMap.has(siswaId)) raporMap.set(siswaId, new Map());
-        if (!raporMap.get(siswaId).has(mapelId)) raporMap.get(siswaId).set(mapelId, new Map());
-        
-        // Pengecekan "tidak null". fields.p ada DAN bukan nullValue.
-        const hasP = (fields.p && typeof fields.p.nullValue === 'undefined');
-        const hasK = (fields.k && typeof fields.k.nullValue === 'undefined');
-        
-        raporMap.get(siswaId).get(mapelId).set(semId, { P: hasP, K: hasK });
+    const nilaiRaporSheet = getNilaiRaporSheet(ss);
+    const raporDataValues = nilaiRaporSheet.getDataRange().getValues();
+    raporDataValues.shift();
+    const raporMap = new Map();
+    raporDataValues.forEach(row => {
+      if (requiredSemesterIdSet.has(row[2]) && requiredMapelIds.has(row[1])) {
+        if (!raporMap.has(row[0])) raporMap.set(row[0], new Map());
+        if (!raporMap.get(row[0]).has(row[1])) raporMap.get(row[0]).set(row[1], new Map());
+        raporMap.get(row[0]).get(row[1]).set(row[2], { P: (row[3] != null && row[3] !== ""), K: (row[4] != null && row[4] !== "") });
       }
-    }
-
-    // Kueri Nilai Ujian
-    const ujianDocs = firestore.getCollection('nilai_ujian')
-                               .where('sekolahID', '==', sekolahID)
-                               .getDocuments();
-
-    for (const doc of ujianDocs) {
-      const fields = doc.fields;
-      if (!fields.siswaID || !fields.mapelID) continue;
-      
-      const siswaId = fields.siswaID.stringValue;
-      const mapelId = fields.mapelID.stringValue;
-
-      if (requiredMapelIds.has(mapelId)) {
-        if (!ujianMap.has(siswaId)) ujianMap.set(siswaId, new Map());
-        
-        const hasUM = (fields.um && typeof fields.um.nullValue === 'undefined');
-        const hasUP = (fields.up && typeof fields.up.nullValue === 'undefined');
-        
-        ujianMap.get(siswaId).set(mapelId, { UM: hasUM, UP: hasUP });
+    });
+    const nilaiUjianSheet = getNilaiUjianSheet(ss);
+    const ujianDataValues = nilaiUjianSheet.getDataRange().getValues();
+    ujianDataValues.shift();
+    const ujianMap = new Map();
+    ujianDataValues.forEach(row => {
+      if (requiredMapelIds.has(row[1])) {
+        if (!ujianMap.has(row[0])) ujianMap.set(row[0], new Map());
+        ujianMap.get(row[0]).set(row[1], { UM: (row[2] != null && row[2] !== ""), UP: (row[3] != null && row[3] !== "") });
       }
-    }
-
-    // 3. Bangun hasil validasi (logika ini sama seperti sebelumnya)
+    });
     const validationResults = {};
     let globalNeedsUM = false, globalNeedsUP = false;
     mapelInfoMap.forEach(info => { if (info.isUS) globalNeedsUM = true; if (info.isUP) globalNeedsUP = true; });
-
     siswaList.forEach(siswa => {
       const resultSiswa = { rapor: {}, ujian: {} };
       if (globalNeedsUM) resultSiswa.ujian.UM = true;
       if (globalNeedsUP) resultSiswa.ujian.UP = true;
       requiredSemesterList.forEach(sem => { resultSiswa.rapor[`${sem.id}_P`] = true; resultSiswa.rapor[`${sem.id}_K`] = true; });
-
       for (const mapel of requiredMapelList) {
         const mapelInfo = mapelInfoMap.get(mapel.id);
-        
-        // Validasi Rapor
         for (const sem of requiredSemesterList) {
           const rData = raporMap.get(siswa.id)?.get(mapel.id)?.get(sem.id) || { P: false, K: false };
           if (resultSiswa.rapor[`${sem.id}_P`] && !rData.P) resultSiswa.rapor[`${sem.id}_P`] = false;
           if (resultSiswa.rapor[`${sem.id}_K`] && !rData.K) resultSiswa.rapor[`${sem.id}_K`] = false;
         }
-        
-        // Validasi Ujian
         const uData = ujianMap.get(siswa.id)?.get(mapel.id) || { UM: false, UP: false };
         if (globalNeedsUM && mapelInfo.isUS && !uData.UM) resultSiswa.ujian.UM = false;
         if (globalNeedsUP && mapelInfo.isUP && !uData.UP) resultSiswa.ujian.UP = false;
       }
-      
       if (!globalNeedsUM) delete resultSiswa.ujian.UM;
       if (!globalNeedsUP) delete resultSiswa.ujian.UP;
       validationResults[siswa.id] = resultSiswa;
     });
-    
     return { status: "sukses", data: { siswaList: siswaList.map(s => ({ id: s.id, nama: s.nama, nisn: s.nisn, kelas: s.kelas })), requiredSemesters: semesterListWithCodes, validationData: validationResults } };
   } catch (e) {
-    Logger.log(`Gagal getValidationData (Firestore): ${e.message} ${e.stack}`);
     return { status: "gagal", message: e.message };
   }
 }
@@ -4502,64 +3965,54 @@ function rebuildKelulusanCacheFromDB() {
   return { masterIndex, allHasilWrappers };
 }
 
-// ====================================================================
-// BAGIAN C: MIGRASI Akun_Guru -> koleksi 'akun_guru'
-// ====================================================================
-
-/**
- * [DIGANTI] Login guru, mencari sekolah dari Firestore.
- */
 function prosesLoginGuru(npsn, email, password) {
   try {
-    const { firestore } = getFirestoreInstance();
-    npsn = npsn.trim();
-    email = email.trim().toLowerCase();
-
-    // 1. Cari Sekolah berdasarkan NPSN dari Firestore
-    const sekolahDocs = firestore.getCollection('sekolah')
-                                 .where('npsn', '==', npsn)
-                                 .getDocuments();
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
     
     let targetSekolah = null;
-    if (sekolahDocs.length > 0) {
-      targetSekolah = sekolahDocs[0].fields;
+    let rowData = null;
+    
+    const npsnFinder = sheetSekolah.getRange("H2:H").createTextFinder(npsn).matchEntireCell(true).findAll();
+    
+    if (npsnFinder.length > 0) {
+      const rowNum = npsnFinder[0].getRow();
+      rowData = sheetSekolah.getRange(rowNum, 1, 1, sheetSekolah.getLastColumn()).getValues()[0];
+      targetSekolah = rowData;
     } else {
-      // Fallback ke Nama Sekolah (untuk sekolah lama atau jika user salah input)
-      const namaDocs = firestore.getCollection('sekolah')
-                                .where('namaSekolah', '==', npsn.toUpperCase())
-                                .getDocuments();
-      if (namaDocs.length > 0) {
-        targetSekolah = namaDocs[0].fields;
+      const namaFinder = sheetSekolah.getRange("B2:B").createTextFinder(npsn).matchEntireCell(true).findAll();
+      if (namaFinder.length > 0) {
+        const rowNum = namaFinder[0].getRow();
+        rowData = sheetSekolah.getRange(rowNum, 1, 1, sheetSekolah.getLastColumn()).getValues()[0];
+        targetSekolah = rowData;
       }
     }
 
     if (!targetSekolah) {
       return { status: "gagal", message: "NPSN/Kode Sekolah tidak ditemukan." };
     }
+
+    const spreadsheetID = targetSekolah[5];
+    const jenjangPilihan = getJenjangPilihanFromSheet(spreadsheetID);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheetGuru = ss.getSheetByName('Akun_Guru');
+    if (!sheetGuru) {
+      return { status: "gagal", message: "Fitur guru belum diaktifkan di sekolah ini. Hubungi Admin." };
+    }
+
+    const guruEmailFinder = sheetGuru.getRange("A2:A").createTextFinder(email).matchEntireCell(true).findAll();
     
-    const sekolahID = parseValue(targetSekolah.sekolahID);
-    const spreadsheetID = parseValue(targetSekolah.spreadsheetID);
-
-    // 2. Cari Guru di Firestore
-    const guruDocs = firestore.getCollection('akun_guru')
-                              .where('sekolahID', '==', sekolahID)
-                              .where('email', '==', email)
-                              .getDocuments();
-
-    if (guruDocs.length > 0) {
-      const guruData = guruDocs[0].fields;
-      const hashedPassword = parseValue(guruData.hashedPassword);
-      const salt = parseValue(guruData.salt);
+    if (guruEmailFinder.length > 0) {
+      const rowNum = guruEmailFinder[0].getRow();
+      const guruData = sheetGuru.getRange(rowNum, 1, 1, sheetGuru.getLastColumn()).getValues()[0];
       
-      if (verifyPassword(password, hashedPassword, salt)) {
+      if (verifyPassword(password, guruData[2], guruData[3])) {
         
-        // Ambil config sekolah (untuk jenjangPilihan)
-        const config = getSekolahConfigData(sekolahID, spreadsheetID);
-        const assignedMapel = parseValue(guruData.mapelIDs) || [];
-        const allMapel = getMapelDataInternal(null, sekolahID); // 'ss' (null) tidak lagi diperlukan
-        
+        const assignedMapel = String(guruData[4]).split(',').map(s => s.trim());
+        const allMapel = getMapelDataInternal(ss, targetSekolah[0]);
         const mapelUPSet = new Set();
         const mapelUMSet = new Set();
+        
         allMapel.forEach(m => {
           if (m.isUP) mapelUPSet.add(m.id);
           if (m.isUS) mapelUMSet.add(m.id);
@@ -4567,21 +4020,22 @@ function prosesLoginGuru(npsn, email, password) {
         
         let hasPraktek = false;
         let hasMadrasah = false;
+        
         for (const mapelId of assignedMapel) {
           if (mapelUPSet.has(mapelId)) hasPraktek = true;
           if (mapelUMSet.has(mapelId)) hasMadrasah = true;
+          if (hasPraktek && hasMadrasah) break;
         }
         
         const token = Utilities.getUuid();
-        const namaGuru = parseValue(guruData.nama);
         const sessionData = {
           role: 'guru',
-          sekolahID: sekolahID,
-          namaSekolah: parseValue(targetSekolah.namaSekolah),
-          jenjang: parseValue(targetSekolah.jenjang),
+          sekolahID: targetSekolah[0],
+          namaSekolah: targetSekolah[1],
+          jenjang: targetSekolah[2],
           spreadsheetID: spreadsheetID,
-          jenjangPilihan: config.jenjangPilihan,
-          namaGuru: namaGuru,
+          jenjangPilihan: jenjangPilihan,
+          namaGuru: guruData[1],
           assignedMapel: assignedMapel,
           hasUjianPraktek: hasPraktek,
           hasUjianMadrasah: hasMadrasah,
@@ -4592,9 +4046,9 @@ function prosesLoginGuru(npsn, email, password) {
         return {
           status: "sukses",
           role: "guru",
-          namaSekolah: sessionData.namaSekolah,
-          namaGuru: namaGuru,
-          jenjangPilihan: config.jenjangPilihan,
+          namaSekolah: targetSekolah[1],
+          namaGuru: guruData[1],
+          jenjangPilihan: jenjangPilihan,
           hasUjianPraktek: hasPraktek,
           hasUjianMadrasah: hasMadrasah,
           token: token
@@ -4620,28 +4074,21 @@ function getGuruSheet(ss) {
   return sheet;
 }
 
-// --- GANTI FUNGSI INI DI Kode.gs.html ---
-/**
- * [PERBAIKAN] Mengambil daftar guru dari Firestore.
- */
 function getGuru(token) {
   try {
-    const { sessionData } = validateAdminSession(token);
-    const sekolahID = sessionData.sekolahID;
+    const { spreadsheetID } = validateAdminSession(token);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getGuruSheet(ss);
+    const data = sheet.getDataRange().getValues();
+    data.shift(); // Hapus header
 
-    const { firestore } = getFirestoreInstance();
-    const documents = firestore.getCollection('akun_guru')
-                               .where('sekolahID', '==', sekolahID)
-                               .getDocuments();
-
-    const guruList = documents.map(doc => {
-      const fields = doc.fields; // 'fields' sudah bersih
-      return {
-        email: fields.email,
-        nama: fields.nama,
-        mapelIds: fields.mapelIDs || [] // 'mapelIDs' adalah array
-      };
-    }).filter(g => g.email);
+    // Mapping data agar mudah dibaca di client
+    const guruList = data.map(row => ({
+      email: row[0],
+      nama: row[1],
+      // Password & Salt tidak dikirim ke client demi keamanan
+      mapelIds: row[4] ? String(row[4]).split(',').map(s => s.trim()) : []
+    })).filter(g => g.email); // Hanya ambil yang emailnya ada
 
     return { status: "sukses", guru: guruList };
   } catch (e) {
@@ -4649,121 +4096,85 @@ function getGuru(token) {
   }
 }
 
-/**
- * [DIGANTI] Menyimpan data guru ke Firestore.
- * Catatan: Fungsi ini berasumsi 'email' adalah ID unik. Mengubah email
- * akan menjadi operasi Hapus + Buat.
- */
 function saveGuru(token, guruData) {
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(15000);
   try {
-    const { sessionData } = validateAdminSession(token);
-    const sekolahID = sessionData.sekolahID;
+    const { spreadsheetID } = validateAdminSession(token);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getGuruSheet(ss);
+    const data = sheet.getDataRange().getValues();
 
-    const { firestore, projectId } = getFirestoreInstance();
-    const projectPath = `projects/${projectId}/databases/(default)/documents`;
-    const batch = firestore.batch();
+    const mapelIdsString = guruData.mapelIds.join(','); // Gabungkan array mapel jadi string
 
-    const mode = guruData.mode;
-    const newEmail = guruData.email.trim().toLowerCase();
-    const originalEmail = guruData.originalEmail.trim().toLowerCase();
-
-    if (!guruData.nama || !newEmail) {
-      return { status: "gagal", message: "Nama dan Email wajib diisi." };
+    // Cek apakah mode edit (berdasarkan email yang tidak boleh berubah kuncinya, tapi di sini kita pakai email sebagai kunci)
+    // Jika mode edit, kita cari baris berdasarkan email LAMA (jika email bisa diubah, butuh ID unik. Asumsikan email tidak bisa diubah untuk kesederhanaan, atau gunakan hidden old-email)
+    
+    let rowIndex = -1;
+    // Kita gunakan flag 'isNew' dari client untuk membedakan tambah/edit
+    if (guruData.mode === 'edit') {
+       for (let i = 1; i < data.length; i++) {
+         if (data[i][0] === guruData.originalEmail) { // Gunakan email asli untuk mencari
+           rowIndex = i + 1;
+           break;
+         }
+       }
+       if (rowIndex === -1) return { status: "gagal", message: "Guru tidak ditemukan untuk diedit." };
+    } else {
+       // Mode Add: Cek duplikasi email
+       for (let i = 1; i < data.length; i++) {
+         if (data[i][0] === guruData.email) return { status: "gagal", message: "Email guru sudah terdaftar." };
+       }
     }
 
-    // Tentukan path dokumen
-    const newDocId = `${sekolahID}_${newEmail}`;
-    const newDocPath = `${projectPath}/akun_guru/${newDocId}`;
-    const newDocRef = { name: newDocPath };
-
-    const fieldsToSave = {
-      sekolahID: sekolahID,
-      email: newEmail,
-      nama: guruData.nama,
-      mapelIDs: guruData.mapelIds // Ini seharusnya sudah array
-    };
-    
-    if (mode === 'add') {
+    if (guruData.mode === 'add') {
       if (!guruData.password) return { status: "gagal", message: "Password wajib untuk guru baru." };
-      
-      // Cek duplikat
-      try {
-        const existing = firestore.getDocument(`akun_guru/${newDocId}`);
-        if (existing.fields) return { status: "gagal", message: "Email guru sudah terdaftar." };
-      } catch (e) {/* Diharapkan error not found */}
-
       const newSalt = generateSalt();
       const newHash = hashPassword(guruData.password, newSalt);
-      fieldsToSave.hashedPassword = newHash;
-      fieldsToSave.salt = newSalt;
-      
-      batch.create(newDocRef, fieldsToSave);
+      sheet.appendRow([guruData.email, guruData.nama, newHash, newSalt, mapelIdsString]);
+    } else {
+      // Mode Edit
+      sheet.getRange(rowIndex, 1).setValue(guruData.email); // Update email (jika berubah)
+      sheet.getRange(rowIndex, 2).setValue(guruData.nama);  // Update nama
+      sheet.getRange(rowIndex, 5).setValue(mapelIdsString); // Update mapel
 
-    } else { // Mode 'edit'
-      const oldDocId = `${sekolahID}_${originalEmail}`;
-      const oldDocPath = `${projectPath}/akun_guru/${oldDocId}`;
-      const oldDocRef = { name: oldDocPath };
-
-      // Jika email TIDAK berubah
-      if (newEmail === originalEmail) {
-        if (guruData.password) {
-          const newSalt = generateSalt();
-          const newHash = hashPassword(guruData.password, newSalt);
-          fieldsToSave.hashedPassword = newHash;
-          fieldsToSave.salt = newSalt;
-        }
-        batch.set(oldDocRef, fieldsToSave, { merge: true }); // set-merge lebih aman
-      
-      } else { // Jika email BERUBAH
-        // Cek duplikat di email baru
-        try {
-          const existing = firestore.getDocument(`akun_guru/${newDocId}`);
-          if (existing.fields) return { status: "gagal", message: "Email baru sudah terdaftar." };
-        } catch (e) {/* Diharapkan error not found */}
-
-        // Ambil data lama
-        const oldDoc = firestore.getDocument(`akun_guru/${oldDocId}`);
-        fieldsToSave.hashedPassword = parseValue(oldDoc.fields.hashedPassword);
-        fieldsToSave.salt = parseValue(oldDoc.fields.salt);
-
-        // Jika password juga diubah
-        if (guruData.password) {
-          const newSalt = generateSalt();
-          const newHash = hashPassword(guruData.password, newSalt);
-          fieldsToSave.hashedPassword = newHash;
-          fieldsToSave.salt = newSalt;
-        }
-        
-        // Operasi Hapus + Buat
-        batch.delete(oldDocRef);
-        batch.create(newDocRef, fieldsToSave);
+      // Update password hanya jika diisi
+      if (guruData.password) {
+        const newSalt = generateSalt();
+        const newHash = hashPassword(guruData.password, newSalt);
+        sheet.getRange(rowIndex, 3).setValue(newHash);
+        sheet.getRange(rowIndex, 4).setValue(newSalt);
       }
     }
-    
-    batch.commit();
+
     return { status: "sukses", message: "Data guru berhasil disimpan." };
   } catch (e) {
     return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
   }
 }
 
-/**
- * [DIGANTI] Menghapus guru dari Firestore.
- */
 function deleteGuru(token, emailGuru) {
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(15000);
   try {
-    const { sessionData } = validateAdminSession(token);
-    const sekolahID = sessionData.sekolahID;
+    const { spreadsheetID } = validateAdminSession(token);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getGuruSheet(ss);
+    const data = sheet.getDataRange().getValues();
     
-    const { firestore } = getFirestoreInstance();
-    const docId = `${sekolahID}_${emailGuru.trim().toLowerCase()}`;
-    const docPath = `akun_guru/${docId}`;
-    
-    firestore.deleteDocument(docPath);
-    
-    return { status: "sukses", message: "Guru berhasil dihapus." };
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === emailGuru) {
+        sheet.deleteRow(i + 1);
+        return { status: "sukses", message: "Guru berhasil dihapus." };
+      }
+    }
+    return { status: "gagal", message: "Guru tidak ditemukan." };
   } catch (e) {
     return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -4833,31 +4244,24 @@ function getGuruTemplateData(token) {
   }
 }
 
-/**
- * [DIGANTI] Memproses import guru ke Firestore.
- */
 function prosesImportExcelGuru(token, fileData) {
   let tempExcelFileId = null;
   let tempConvertedSheetId = null;
   
   try {
-    const { sessionData } = validateAdminSession(token);
-    const sekolahID = sessionData.sekolahID;
+    const { spreadsheetID } = validateAdminSession(token);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
     
-    const { firestore, projectId } = getFirestoreInstance();
-    const projectPath = `projects/${projectId}/databases/(default)/documents`;
-    const batch = firestore.batch();
-    
-    // 1. Dapatkan guru & mapel yang ada
-    const guruDocs = firestore.getCollection('akun_guru')
-                               .where('sekolahID', '==', sekolahID)
-                               .getDocuments();
-    const existingEmailSet = new Set(guruDocs.map(doc => parseValue(doc.fields.email).trim().toLowerCase()));
+    const sheetGuru = getGuruSheet(ss);
+    const dataGuru = sheetGuru.getDataRange().getValues();
+    const existingEmailSet = new Set();
+    for(let i=1; i < dataGuru.length; i++) {
+      existingEmailSet.add(String(dataGuru[i][0]).trim().toLowerCase());
+    }
 
-    const mapelList = getMapelDataInternal(null, sekolahID); // 'ss' tidak lagi relevan
+    const mapelList = getMapelDataInternal(ss, spreadsheetID);
     const validMapelIdSet = new Set(mapelList.map(m => m.id));
 
-    // 2. Proses File
     const { base64, mimeType, fileName } = fileData;
     const decodedData = Utilities.base64Decode(base64.split(',')[1]);
     const blob = Utilities.newBlob(decodedData, mimeType, fileName);
@@ -4870,15 +4274,19 @@ function prosesImportExcelGuru(token, fileData) {
     
     const tempSheet = SpreadsheetApp.openById(tempConvertedSheetId);
     const dataSheet = tempSheet.getSheetByName('Template Guru');
-    if (!dataSheet) throw new Error("File Excel tidak valid. Sheet 'Template Guru' tidak ditemukan.");
+    if (!dataSheet) {
+      throw new Error("File Excel tidak valid. Sheet 'Template Guru' tidak ditemukan.");
+    }
     
     const excelData = dataSheet.getDataRange().getValues();
-    if (excelData.length <= 1) throw new Error("File Excel kosong.");
+    if (excelData.length <= 1) {
+      throw new Error("File Excel kosong atau hanya berisi header.");
+    }
+    
     excelData.shift(); 
 
-    // 3. Validasi dan Persiapan Batch
     const gagalList = [];
-    let successCount = 0;
+    const rowsToAppend = [];
     
     for (let i = 0; i < excelData.length; i++) {
       const row = excelData[i];
@@ -4889,62 +4297,58 @@ function prosesImportExcelGuru(token, fileData) {
       const password = (row[2] ? String(row[2]) : '');
       const mapelIdsStr = (row[3] ? String(row[3]) : '').trim();
 
-      // Validasi
       if (!nama || !email || !password) {
-        gagalList.push({ baris: barisKe, nama: nama, email: email, alasan: "Nama, Email, atau Password kosong." }); continue;
+        gagalList.push({ baris: barisKe, nama: nama, email: email, alasan: "Nama, Email, atau Password kosong." });
+        continue;
       }
+      
       if (existingEmailSet.has(email)) {
-        gagalList.push({ baris: barisKe, nama: nama, email: email, alasan: "Email sudah terdaftar." }); continue;
+        gagalList.push({ baris: barisKe, nama: nama, email: email, alasan: "Email sudah terdaftar." });
+        continue;
       }
+
       if (password.length < 8) {
-         gagalList.push({ baris: barisKe, nama: nama, email: email, alasan: "Password kurang dari 8 karakter." }); continue;
+         gagalList.push({ baris: barisKe, nama: nama, email: email, alasan: "Password kurang dari 8 karakter." });
+         continue;
       }
+
       const mapelIds = mapelIdsStr.split(',').map(id => id.trim()).filter(id => id);
       let mapelValid = true;
       let mapelInvalid = '';
+      
       for (const id of mapelIds) {
         if (!validMapelIdSet.has(id)) {
-          mapelValid = false; mapelInvalid = id; break;
+          mapelValid = false;
+          mapelInvalid = id;
+          break;
         }
       }
+
       if (!mapelValid) {
-        gagalList.push({ baris: barisKe, nama: nama, email: email, alasan: `Kode Mapel '${mapelInvalid}' tidak valid.` }); continue;
+        gagalList.push({ baris: barisKe, nama: nama, email: email, alasan: `Kode Mapel '${mapelInvalid}' tidak valid.` });
+        continue;
       }
 
-      // Persiapan Doc
       const newSalt = generateSalt();
       const newHash = hashPassword(password, newSalt);
-      const docId = `${sekolahID}_${email}`;
-      const fullDocPath = `${projectPath}/akun_guru/${docId}`;
-      const docRef = { name: fullDocPath };
+      const finalMapelIdsStr = mapelIds.join(',');
 
-      const newDoc = {
-        sekolahID: sekolahID,
-        email: email,
-        nama: nama,
-        hashedPassword: newHash,
-        salt: newSalt,
-        mapelIDs: mapelIds // Simpan sebagai array
-      };
-
-      batch.create(docRef, newDoc);
+      rowsToAppend.push([email, nama, newHash, newSalt, finalMapelIdsStr]);
       existingEmailSet.add(email);
-      successCount++;
     }
 
-    // 4. Commit Batch
-    if (successCount > 0) {
-      batch.commit();
+    if (rowsToAppend.length > 0) {
+      sheetGuru.getRange(sheetGuru.getLastRow() + 1, 1, rowsToAppend.length, rowsToAppend[0].length)
+        .setValues(rowsToAppend);
     }
 
-    // 5. Cleanup
     DriveApp.getFileById(tempExcelFileId).setTrashed(true);
     DriveApp.getFileById(tempConvertedSheetId).setTrashed(true);
     
     return {
       status: "sukses",
       totalDiProses: excelData.length,
-      berhasilDiUpload: successCount,
+      berhasilDiUpload: rowsToAppend.length,
       gagalDiUpload: gagalList.length,
       dataGagal: gagalList
     };
@@ -4953,590 +4357,5 @@ function prosesImportExcelGuru(token, fileData) {
     if (tempExcelFileId) { try { DriveApp.getFileById(tempExcelFileId).setTrashed(true); } catch (err) {} }
     if (tempConvertedSheetId) { try { DriveApp.getFileById(tempConvertedSheetId).setTrashed(true); } catch (err) {} }
     return { status: "gagal", message: "Terjadi error: " + e.message };
-  }
-}
-
-
-/**
- * FUNGSI MIGRASI - BAGIAN 1: UJIAN
- * Jalankan fungsi ini untuk memigrasi Nilai_Ujian saja.
- */
-function MIGRASI_1_NilaiUjian_KeFirestore() {
-  let token;
-  try {
-    token = Browser.inputBox(
-      "Otorisasi Migrasi (Bagian 1: Ujian)",
-      "Tempel sessionToken Anda (F12 > Application > Local Storage):",
-      Browser.Buttons.OK_CANCEL
-    );
-    if (token === 'cancel' || !token) throw new Error("Migrasi dibatalkan.");
-
-    const { sessionData, spreadsheetID } = validateAdminSession(token);
-    const sekolahID = sessionData.sekolahID;
-    
-    // --- PERUBAHAN DI SINI ---
-    const { firestore, projectId } = getFirestoreInstance();
-    const projectPath = `projects/${projectId}/databases/(default)/documents`;
-    // --- AKHIR PERUBAHAN ---
-
-    const ss = SpreadsheetApp.openById(spreadsheetID);
-    
-    let batch = firestore.batch();
-    let count = 0;
-    
-    Logger.log(`Memulai migrasi UJIAN untuk Sekolah: ${sekolahID}`);
-
-    const sheetUjian = getNilaiUjianSheet(ss);
-    if (sheetUjian.getLastRow() > 1) {
-      const dataUjian = sheetUjian.getRange("A2:D" + sheetUjian.getLastRow()).getValues();
-      Logger.log(`Ditemukan ${dataUjian.length} data di Nilai_Ujian...`);
-      
-      for (const row of dataUjian) {
-        const siswaID = row[0]; const mapelID = row[1];
-        if (!siswaID || !mapelID) continue;
-        
-        const docId = `${sekolahID}_${siswaID}_${mapelID}`;
-
-        // --- PERUBAHAN DI SINI ---
-        // Buat path dokumen lengkap secara manual
-        const fullDocPath = `${projectPath}/nilai_ujian/${docId}`;
-        // Buat objek 'docRef' palsu yang hanya berisi properti .name
-        const docRef = { name: fullDocPath };
-        // --- AKHIR PERUBAHAN ---
-        
-        const data = {
-          sekolahID: sekolahID, siswaID: siswaID, mapelID: mapelID,
-          um: (row[2] === "" || row[2] === null) ? null : row[2],
-          up: (row[3] === "" || row[3] === null) ? null : row[3]
-        };
-        batch.set(docRef, data);
-        count++;
-
-        if (count >= 400) { 
-          let response = batch.commit();
-          if (response.error) {
-            throw new Error("Gagal commit batch Ujian (400): " + response.error.message);
-          }
-          Logger.log(`Batch Ujian ${count} data terkirim...`);
-          batch = firestore.batch();
-          count = 0;
-        }
-      }
-      if (count > 0) {
-        let response = batch.commit();
-        if (response.error) {
-          throw new Error("Gagal commit batch Ujian terakhir: " + response.error.message);
-        }
-        Logger.log(`Batch Ujian ${count} data terakhir terkirim.`);
-      }
-    }
-    
-    Logger.log("MIGRASI UJIAN SELESAI.");
-    Browser.msgBox("MIGRASI UJIAN SELESAI.", "Silakan periksa Firebase, lalu jalankan MIGRASI_2_NilaiRapor_KeFirestore.", Browser.Buttons.OK);
-  } catch (e) {
-    Logger.log(e);
-    Browser.msgBox("MIGRASI GAGAL", `Error: ${e.message}`, Browser.Buttons.OK);
-  }
-}
-
-/**
- * FUNGSI MIGRASI - BAGIAN 2: RAPOR
- * Jalankan fungsi ini SETELAH Bagian 1 selesai.
- */
-function MIGRASI_2_NilaiRapor_KeFirestore() {
-  let token;
-  try {
-    token = Browser.inputBox(
-      "Otorisasi Migrasi (Bagian 2: Rapor)",
-      "Tempel sessionToken Anda (F12 > Application > Local Storage):",
-      Browser.Buttons.OK_CANCEL
-    );
-    if (token === 'cancel' || !token) throw new Error("Migrasi dibatalkan.");
-
-    const { sessionData, spreadsheetID } = validateAdminSession(token);
-    const sekolahID = sessionData.sekolahID;
-
-    // --- PERUBAHAN DI SINI ---
-    const { firestore, projectId } = getFirestoreInstance();
-    const projectPath = `projects/${projectId}/databases/(default)/documents`;
-    // --- AKHIR PERUBAHAN ---
-
-    const ss = SpreadsheetApp.openById(spreadsheetID);
-    
-    let batch = firestore.batch();
-    let count = 0;
-    
-    Logger.log(`Memulai migrasi RAPOR untuk Sekolah: ${sekolahID}`);
-
-    const sheetRapor = getNilaiRaporSheet(ss);
-    if (sheetRapor.getLastRow() > 1) {
-      const dataRapor = sheetRapor.getRange("A2:E" + sheetRapor.getLastRow()).getValues();
-      Logger.log(`Ditemukan ${dataRapor.length} data di Nilai_Rapor_Akhir...`);
-
-      for (const row of dataRapor) {
-        const siswaID = row[0]; const mapelID = row[1]; const semesterID = row[2];
-        if (!siswaID || !mapelID || !semesterID) continue;
-        
-        const docId = `${sekolahID}_${siswaID}_${mapelID}_${semesterID}`;
-
-        // --- PERUBAHAN DI SINI ---
-        const fullDocPath = `${projectPath}/nilai_rapor/${docId}`;
-        const docRef = { name: fullDocPath };
-        // --- AKHIR PERUBAHAN ---
-        
-        const data = {
-          sekolahID: sekolahID, siswaID: siswaID, mapelID: mapelID, semesterID: semesterID,
-          p: (row[3] === "" || row[3] === null) ? null : row[3],
-          k: (row[4] === "" || row[4] === null) ? null : row[4]
-        };
-        
-        batch.set(docRef, data);
-        count++;
-
-        if (count >= 400) {
-          let response = batch.commit();
-          if (response.error) {
-            throw new Error("Gagal commit batch Rapor (400): " + response.error.message);
-          }
-          Logger.log(`Batch Rapor ${count} data terkirim...`);
-          batch = firestore.batch();
-          count = 0;
-        }
-      }
-      if (count > 0) {
-        let response = batch.commit();
-        if (response.error) {
-          throw new Error("Gagal commit batch Rapor terakhir: " + response.error.message);
-        }
-        Logger.log(`Batch Rapor ${count} data terakhir terkirim.`);
-      }
-    }
-    
-    Logger.log("MIGRASI RAPOR SELESAI.");
-    Browser.msgBox("MIGRASI RAPOR SELESAI.", "Seluruh data nilai telah berhasil dipindahkan ke Firestore.", Browser.Buttons.OK);
-  } catch (e) {
-    Logger.log(e);
-    Browser.msgBox("MIGRASI GAGAL", `Error: ${e.message}`, Browser.Buttons.OK);
-  }
-}
-
-// --- Tambahkan fungsi ini, jalankan SATU KALI, lalu HAPUS ---
-function MIGRASI_MASTER_DATABASE_ke_Firestore() {
-  try {
-    const { firestore, projectId } = getFirestoreInstance();
-    const projectPath = `projects/${projectId}/databases/(default)/documents`;
-    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
-    
-    let batch = firestore.batch();
-    let count = 0;
-    
-    Logger.log("Memulai migrasi...");
-
-    // 1. Migrasi Sheet_Superadmin
-    const sheetSuperadmin = masterSS.getSheetByName("Sheet_Superadmin");
-    const dataSuperadmin = sheetSuperadmin.getDataRange().getValues();
-    dataSuperadmin.shift(); // Hapus header
-    
-    Logger.log(`Memigrasi ${dataSuperadmin.length} Superadmin...`);
-    dataSuperadmin.forEach(row => {
-      const email = row[0].trim().toLowerCase();
-      if (!email) return; // Lewati baris kosong
-      
-      const docPath = `${projectPath}/superadmin/${email}`;
-      const docRef = { name: docPath };
-      const data = {
-        email: email,
-        nama: row[1],
-        hashedPassword: row[2],
-        salt: row[3]
-      };
-      batch.set(docRef, data); // Gunakan set() untuk menimpa jika ada
-      count++;
-    });
-    Logger.log("Migrasi Superadmin selesai di batch.");
-
-    // 2. Migrasi Sheet_Sekolah
-    const sheetSekolah = masterSS.getSheetByName("Sheet_Sekolah");
-    const dataSekolah = sheetSekolah.getDataRange().getValues();
-    dataSekolah.shift(); // Hapus header
-    
-    Logger.log(`Memigrasi ${dataSekolah.length} Sekolah...`);
-    dataSekolah.forEach(row => {
-      const sekolahID = row[0];
-      if (!sekolahID) return; // Lewati baris kosong
-      
-      const docPath = `${projectPath}/sekolah/${sekolahID}`;
-      const docRef = { name: docPath };
-      const data = {
-        sekolahID: sekolahID,
-        namaSekolah: row[1],
-        jenjang: row[2],
-        emailAdmin: row[3].trim().toLowerCase(),
-        hashedPassword: row[4],
-        spreadsheetID: row[5],
-        salt: row[6],
-        npsn: row[7] || ""
-      };
-      batch.set(docRef, data);
-      count++;
-      if (count >= 400) {
-        batch.commit();
-        Logger.log("Batch 400 sekolah terkirim...");
-        batch = firestore.batch();
-        count = 0;
-      }
-    });
-    Logger.log("Migrasi Sekolah selesai di batch.");
-    
-    // 3. Migrasi Sheet_Registrasi_Pending
-    const sheetPending = masterSS.getSheetByName("Registrasi_Pending");
-    const dataPending = sheetPending.getDataRange().getValues();
-    dataPending.shift(); // Hapus header
-    
-    Logger.log(`Memigrasi ${dataPending.length} Registrasi Pending...`);
-    dataPending.forEach(row => {
-      const token = row[6];
-      if (!token) return; // Lewati jika tidak ada token
-      
-      const docPath = `${projectPath}/registrasi_pending/${token}`;
-      const docRef = { name: docPath };
-      const data = {
-        email: row[0].trim().toLowerCase(),
-        namaSekolah: row[1],
-        npsn: row[2],
-        jenjang: row[3],
-        hashedPassword: row[4],
-        salt: row[5],
-        timestamp: new Date(row[7]).toISOString()
-      };
-      batch.set(docRef, data);
-      count++;
-      if (count >= 400) {
-        batch.commit();
-        Logger.log("Batch 400 pending terkirim...");
-        batch = firestore.batch();
-        count = 0;
-      }
-    });
-    Logger.log("Migrasi Pending selesai di batch.");
-
-    // Commit sisa batch
-    if (count > 0) {
-      batch.commit();
-      Logger.log(`Batch final ${count} data terkirim.`);
-    }
-
-    Logger.log("--- MIGRASI MASTER DATABASE SELESAI ---");
-    Browser.msgBox("MIGRASI MASTER DATABASE SELESAI", "Semua data admin, sekolah, dan pending telah dipindah ke Firestore.", Browser.Buttons.OK);
-
-  } catch (e) {
-    Logger.log(e);
-    Browser.msgBox("MIGRASI GAGAL", `Error: ${e.message}`, Browser.Buttons.OK);
-  }
-}
-
-// --- GANTI FUNGSI LAMA DENGAN VERSI BARU INI DI Kode.gs.html ---
-
-/**
- * [KONSTANTA] Ukuran batch untuk Firestore
- */
-const MIGRASI_BATCH_SIZE = 400; // Firestore merekomendasikan maks 500
-
-/**
- * [KONSTANTA] Default config dari Langkah 3 (disertakan lagi untuk kelengkapan)
- */
-const DEFAULTS_CONFIG_MIGRASI = {
-  bobotRapor: 60, bobotUjian: 40, kkm: 76, jumlahSemester: 5,
-  jenjangPilihan: '', npsn: '', nsm: '', alamat: '', provinsi: '',
-  kabKot: '', pilihanKabKot: 'Kabupaten', kecamatan: '', kelDes: '',
-  pilihanKelDes: 'Kelurahan', kodePos: '', telepon: '', email: '',
-  website: '', namaKepsek: '', nipKepsek: ''
-};
-
-/**
- * [HELPER] Fungsi untuk mem-parsing nilai dari respons Firestore.
- * (Anda seharusnya sudah memiliki ini dari langkah sebelumnya)
- */
-function parseValue(value) {
-  if (!value) return null;
-  if (value.stringValue) return value.stringValue;
-  if (value.integerValue) return parseInt(value.integerValue, 10);
-  if (value.doubleValue) return parseFloat(value.doubleValue);
-  if (value.booleanValue) return value.booleanValue;
-  if (value.hasOwnProperty('nullValue')) return null;
-  if (value.timestampValue) return value.timestampValue;
-  if (Array.isArray(value.arrayValue?.values)) {
-    return value.arrayValue.values.map(parseValue);
-  }
-  return null; 
-}
-
-/**
- * [HELPER MIGRASI] Mengambil data dari sheet dengan aman.
- */
-function _migrasiGetSheetData(ss, sheetName) {
-  try {
-    const sheet = ss.getSheetByName(sheetName);
-    if (!sheet) {
-      Logger.log(`     - Peringatan: Sheet '${sheetName}' tidak ditemukan.`);
-      return [];
-    }
-    if (sheet.getLastRow() <= 1) {
-      Logger.log(`     - Info: Sheet '${sheetName}' kosong.`);
-      return [];
-    }
-    const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
-    Logger.log(`     - Ditemukan ${data.length} baris di '${sheetName}'.`);
-    return data;
-  } catch (e) {
-    Logger.log(`     - Gagal membaca sheet '${sheetName}': ${e.message}`);
-    return [];
-  }
-}
-
-/**
- * [HELPER MIGRASI] Menangani pengiriman batch.
- */
-function _migrasiHandleBatch(batch, count, firestore, logPrefix) {
-  if (count >= MIGRASI_BATCH_SIZE) {
-    batch.commit();
-    Logger.log(`     > ${logPrefix}: Batch ${count} data terkirim.`);
-    return { batch: firestore.batch(), count: 0 }; // Buat batch baru
-  }
-  return { batch: batch, count: count };
-}
-
-/**
- * ====================================================================
- * FUNGSI MIGRASI UTAMA (JALANKAN INI SATU KALI) - VERSI PERBAIKAN
- * ====================================================================
- */
-function MIGRASI_SEMUA_DATA_SEKOLAH_ke_Firestore() {
-  try {
-    const { firestore, projectId } = getFirestoreInstance();
-    const projectPath = `projects/${projectId}/databases/(default)/documents`;
-    
-    Logger.log("Memulai Migrasi Massal Data Sekolah ke Firestore...");
-    
-    // 1. Dapatkan daftar semua sekolah dari Firestore (hasil Langkah 4)
-    const allSekolahDocs = firestore.getCollection('sekolah').getDocuments();
-    Logger.log(`Ditemukan ${allSekolahDocs.length} sekolah untuk diproses.`);
-    
-    // 2. Loop setiap sekolah
-    for (const sekolahDoc of allSekolahDocs) {
-      // 'sekolahDoc.fields' SUDAH merupakan objek JavaScript yang bersih
-      // karena dikembalikan oleh konstruktor 'new Document()' di dalam getDocuments()
-      
-      // --- PERBAIKAN DI SINI: Hapus semua parseValue() ---
-      const fields = sekolahDoc.fields; 
-      const sekolahID = fields.sekolahID;
-      const spreadsheetID = fields.spreadsheetID;
-      const namaSekolah = fields.namaSekolah;
-      // --- AKHIR PERBAIKAN ---
-
-      if (!spreadsheetID) {
-        Logger.log(`--- SKIP: ${namaSekolah} (ID: ${sekolahID}) ---`);
-        Logger.log("   Alasan: spreadsheetID tidak ada atau null di dokumen Firestore.\n");
-        continue;
-      }
-
-      Logger.log(`--- MEMPROSES: ${namaSekolah} (ID: ${sekolahID}) ---`);
-      
-      let batch = firestore.batch();
-      let count = 0;
-      let totalCount = 0;
-
-      try {
-        const ss = SpreadsheetApp.openById(spreadsheetID);
-
-        // A. Migrasi Config (Data_Sekolah + Pengaturan)
-        // ----------------------------------------------------
-        Logger.log("   Migrasi Config (1 Dokumen)...");
-        const configDoc = { ...DEFAULTS_CONFIG_MIGRASI }; // Salin default
-        configDoc.sekolahID = sekolahID; // Tambahkan sekolahID
-        
-        // --- PERBAIKAN DI SINI: Gunakan 'fields' yang sudah bersih ---
-        configDoc.npsn = fields.npsn || ''; // Ambil NPSN dari data 'sekolah'
-        // --- AKHIR PERBAIKAN ---
-
-        // Ambil dari Sheet 'Data_Sekolah'
-        try {
-          const sheetData = ss.getSheetByName('Data_Sekolah');
-          if (sheetData && sheetData.getLastRow() > 1) {
-            const data = sheetData.getRange('A2:P2').getValues()[0];
-            configDoc.jenjangPilihan = data[0] || configDoc.jenjangPilihan;
-            // configDoc.npsn (sudah diambil dari 'sekolah')
-            configDoc.nsm = data[2] || configDoc.nsm;
-            configDoc.alamat = data[3] || configDoc.alamat;
-            configDoc.provinsi = data[4] || configDoc.provinsi;
-            configDoc.kabKot = data[5] || configDoc.kabKot;
-            configDoc.pilihanKabKot = data[6] || configDoc.pilihanKabKot;
-            configDoc.kecamatan = data[7] || configDoc.kecamatan;
-            configDoc.kelDes = data[8] || configDoc.kelDes;
-            configDoc.pilihanKelDes = data[9] || configDoc.pilihanKelDes;
-            configDoc.kodePos = data[10] || configDoc.kodePos;
-            configDoc.telepon = data[11] || configDoc.telepon;
-            configDoc.email = data[12] || configDoc.email;
-            configDoc.website = data[13] || configDoc.website;
-            configDoc.namaKepsek = data[14] || configDoc.namaKepsek;
-            configDoc.nipKepsek = data[15] || configDoc.nipKepsek;
-          }
-        } catch (e) { Logger.log(`     - Peringatan: Gagal membaca Sheet 'Data_Sekolah': ${e.message}`); }
-
-        // Ambil dari Sheet 'Pengaturan'
-        try {
-          const dataPengaturan = _migrasiGetSheetData(ss, 'Pengaturan');
-          dataPengaturan.forEach(row => {
-            if (row[0] === 'Bobot_Rapor') configDoc.bobotRapor = row[1];
-            if (row[0] === 'Bobot_Ujian') configDoc.bobotUjian = row[1];
-            if (row[0] === 'KKM') configDoc.kkm = row[1];
-            if (row[0] === 'Jumlah_Semester') configDoc.jumlahSemester = row[1];
-          });
-        } catch (e) { Logger.log(`     - Peringatan: Gagal membaca Sheet 'Pengaturan': ${e.message}`); }
-        
-        const configDocPath = `${projectPath}/sekolah_config/${sekolahID}`;
-        batch.set({ name: configDocPath }, configDoc); // set() akan menimpa
-        count++;
-        totalCount++;
-
-        // B. Migrasi Kelas
-        // ----------------------------------------------------
-        const dataKelas = _migrasiGetSheetData(ss, 'Kelas');
-        for (const row of dataKelas) {
-          const namaKelas = row[0];
-          if (!namaKelas) continue;
-          const docId = `${sekolahID}_${namaKelas.replace(/[^a-zA-Z0-9]/g, '_')}`;
-          const docPath = `${projectPath}/kelas/${docId}`;
-          batch.set({ name: docPath }, { sekolahID: sekolahID, namaKelas: namaKelas });
-          count++;
-        }
-        totalCount += dataKelas.length;
-        
-        // C. Migrasi Mapel
-        // ----------------------------------------------------
-        const dataMapel = _migrasiGetSheetData(ss, 'Mapel');
-        for (const [index, row] of dataMapel.entries()) {
-          const mapelID = row[0];
-          if (!mapelID) continue;
-          const docId = `${sekolahID}_${mapelID}`;
-          const docPath = `${projectPath}/mapel/${docId}`;
-          const data = {
-            sekolahID: sekolahID, mapelID: mapelID, namaMapel: row[1],
-            isUS: row[2] || false, isUP: row[3] || false,
-            urutan: Number(row[4] || index + 1)
-          };
-          batch.set({ name: docPath }, data);
-          count++;
-          let batchRes = _migrasiHandleBatch(batch, count, firestore, "Mapel");
-          batch = batchRes.batch; count = batchRes.count;
-        }
-        totalCount += dataMapel.length;
-
-        // D. Migrasi Siswa
-        // ----------------------------------------------------
-        const dataSiswa = _migrasiGetSheetData(ss, 'Siswa');
-        for (const row of dataSiswa) {
-          const siswaID = row[0];
-          if (!siswaID) continue;
-          const docId = `${sekolahID}_${siswaID}`;
-          const docPath = `${projectPath}/siswa/${docId}`;
-          const idNum = parseInt((siswaID || 'SIS-0').split('-')[1] || 0);
-          let tglLahir = (row[6] instanceof Date) ? Utilities.formatDate(row[6], Session.getScriptTimeZone(), "yyyy-MM-dd") : (row[6] || null);
-
-          const data = {
-            sekolahID: sekolahID, siswaID: siswaID,
-            namaSiswa: row[1], nisn: row[2], nisLokal: row[3] || null,
-            jenisKelamin: row[4] || null, tempatLahir: row[5] || null,
-            tglLahir: tglLahir, kelas: row[7] || null,
-            urutan: Number(row[8] || idNum)
-          };
-          batch.set({ name: docPath }, data);
-          count++;
-          let batchRes = _migrasiHandleBatch(batch, count, firestore, "Siswa");
-          batch = batchRes.batch; count = batchRes.count;
-        }
-        totalCount += dataSiswa.length;
-
-        // E. Migrasi Akun_Guru
-        // ----------------------------------------------------
-        const dataGuru = _migrasiGetSheetData(ss, 'Akun_Guru');
-        for (const row of dataGuru) {
-          const email = (row[0] || '').trim().toLowerCase();
-          if (!email) continue;
-          const docId = `${sekolahID}_${email}`;
-          const docPath = `${projectPath}/akun_guru/${docId}`;
-          const data = {
-            sekolahID: sekolahID, email: email, nama: row[1],
-            hashedPassword: row[2], salt: row[3],
-            mapelIDs: (row[4] ? String(row[4]).split(',').map(s => s.trim()) : [])
-          };
-          batch.set({ name: docPath }, data);
-          count++;
-          let batchRes = _migrasiHandleBatch(batch, count, firestore, "Akun_Guru");
-          batch = batchRes.batch; count = batchRes.count;
-        }
-        totalCount += dataGuru.length;
-
-        // F. Migrasi Nilai_Ujian
-        // ----------------------------------------------------
-        const dataUjian = _migrasiGetSheetData(ss, 'Nilai_Ujian');
-        for (const row of dataUjian) {
-          const siswaID = row[0]; const mapelID = row[1];
-          if (!siswaID || !mapelID) continue;
-          const docId = `${sekolahID}_${siswaID}_${mapelID}`;
-          const docPath = `${projectPath}/nilai_ujian/${docId}`;
-          const data = {
-            sekolahID: sekolahID, siswaID: siswaID, mapelID: mapelID,
-            um: (row[2] === "" || row[2] === null) ? null : row[2],
-            up: (row[3] === "" || row[3] === null) ? null : row[3]
-          };
-          batch.set({ name: docPath }, data, { merge: true }); // set-merge jika sudah ada
-          count++;
-          let batchRes = _migrasiHandleBatch(batch, count, firestore, "Nilai_Ujian");
-          batch = batchRes.batch; count = batchRes.count;
-        }
-        totalCount += dataUjian.length;
-
-        // G. Migrasi Nilai_Rapor_Akhir
-        // ----------------------------------------------------
-        const dataRapor = _migrasiGetSheetData(ss, 'Nilai_Rapor_Akhir');
-        for (const row of dataRapor) {
-          const siswaID = row[0]; const mapelID = row[1]; const semesterID = row[2];
-          if (!siswaID || !mapelID || !semesterID) continue;
-          const docId = `${sekolahID}_${siswaID}_${mapelID}_${semesterID}`;
-          const docPath = `${projectPath}/nilai_rapor/${docId}`;
-          const data = {
-            sekolahID: sekolahID, siswaID: siswaID, mapelID: mapelID, semesterID: semesterID,
-            p: (row[3] === "" || row[3] === null) ? null : row[3],
-            k: (row[4] === "" || row[4] === null) ? null : row[4]
-          };
-          batch.set({ name: docPath }, data, { merge: true });
-          count++;
-          let batchRes = _migrasiHandleBatch(batch, count, firestore, "Nilai_Rapor");
-          batch = batchRes.batch; count = batchRes.count;
-        }
-        totalCount += dataRapor.length;
-
-        // Commit sisa batch
-        if (count > 0) {
-          batch.commit();
-          Logger.log(`     > Batch final ${count} data terkirim.`);
-        }
-        
-        Logger.log(`--- SUKSES: ${namaSekolah} (Total ${totalCount} dokumen diproses) ---`);
-
-      } catch (e) {
-        Logger.log(`!!! GAGAL TOTAL UNTUK ${namaSekolah}: ${e.message} !!!`);
-        Logger.log(`   SpreadsheetID: ${spreadsheetID}`);
-        // Lanjutkan ke sekolah berikutnya
-      }
-    } // Akhir loop sekolah
-
-    Logger.log("=== SEMUA MIGRASI DATA SEKOLAH SELESAI ===");
-    Browser.msgBox("MIGRASI DATA SEKOLAH SELESAI.", "Semua data dari semua spreadsheet sekolah telah dimigrasikan ke Firestore.", Browser.Buttons.OK);
-
-  } catch (e) {
-    Logger.log(e);
-    Browser.msgBox("MIGRASI GAGAL TOTAL", `Error: ${e.message}`, Browser.Buttons.OK);
   }
 }
