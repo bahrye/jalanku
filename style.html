@@ -3737,4 +3737,136 @@
     border-style: dashed;
   }
 
+  /* --- ============================================= --- */
+  /* ---      GAYA BARU UNTUK CETAK KARTU GURU       --- */
+  /* --- ============================================= --- */
+
+  #halaman-cetak-kartu {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--bg-light);
+    z-index: 20000;
+    overflow-y: auto;
+    padding: 20px;
+    box-sizing: border-box;
+  }
+
+  .print-toolbar {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    padding: 10px;
+    background-color: var(--bg-white);
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    max-width: 1000px;
+    margin: 0 auto 20px auto;
+  }
+
+  .print-toolbar button {
+    width: auto;
+    padding: 10px 20px;
+    font-size: 15px;
+  }
+
+  #kartu-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 15px;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+
+  .login-card {
+    background-color: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    box-sizing: border-box;
+    page-break-inside: avoid; /* Mencegah kartu terpotong saat dicetak */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  }
+
+  .login-card h3 {
+    margin: 0 0 10px 0;
+    font-size: 16px;
+    color: var(--text-dark);
+  }
+
+  .login-card-qr {
+    display: block; 
+    
+    /* --- PERUBAHAN DI SINI --- */
+    width: 170px;  /* Diubah dari 150px */
+    height: 170px; /* Diubah dari 150px */
+    /* --- AKHIR PERUBAHAN --- */
+
+    margin: 10px 0;
+    border: 1px solid var(--border-color);
+    padding: 5px;
+    border-radius: 8px;
+  }
+
+  .login-card-qr img {
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  .login-card-info {
+    margin-top: 15px;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .login-card-info strong {
+    font-size: 16px;
+    color: var(--primary-color);
+  }
+
+  /* --- Pengaturan Saat Mencetak --- */
+  @media print {
+    body {
+      background-color: var(--bg-white) !important;
+      padding-top: 0;
+    }
+
+    /* Sembunyikan semua elemen kecuali halaman cetak */
+    body > *:not(#halaman-cetak-kartu) {
+      display: none !important;
+    }
+
+    #halaman-cetak-kartu {
+      position: static;
+      width: auto;
+      height: auto;
+      box-shadow: none;
+      border: none;
+      padding: 0;
+      overflow-y: visible;
+    }
+    
+    /* Sembunyikan tombol "Tutup" dan "Cetak" saat mencetak */
+    .print-toolbar {
+      display: none !important;
+    }
+
+    #kartu-container {
+      max-width: 100%;
+      grid-template-columns: 1fr 1fr; /* 2 kolom per halaman cetak */
+      gap: 10px;
+    }
+    
+    .login-card {
+      border: 1px solid #999;
+      box-shadow: none;
+    }
+  }
+
 </style>
