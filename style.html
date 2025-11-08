@@ -3667,7 +3667,8 @@
   }
 
   .mapel-kelas-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr 120px 36px; /* Kolom 1 (Nama), Kolom 2 (Select), Kolom 3 (Tombol X) */
     align-items: center;
     padding: 10px;
     gap: 10px;
@@ -3678,46 +3679,50 @@
   }
 
   .mapel-kelas-nama {
-    flex-grow: 1;
     font-size: 14px;
     font-weight: 500;
     padding-left: 5px;
   }
 
   .mapel-kelas-select-wrapper {
-    flex-shrink: 0;
-    width: 120px;
+    /* Tidak perlu style khusus, diatur oleh grid */
   }
 
-  /* Ini adalah select 'multiple' yang kita buat terlihat seperti dropdown biasa */
+  /* INI SEKARANG MENJADI DROPDOWN STANDAR */
   .mapel-kelas-select {
     width: 100% !important;
-    font-size: 13px !important;
-    padding: 8px !important;
-    background-color: var(--bg-white) !important;
+    padding: 14px !important; /* <-- DISESUAIKAN: Standar form input */
+    font-size: 16px !important; /* <-- DISESUAIKAN: Standar form input */
     border: 1px solid var(--border-color) !important;
-    border-radius: 6px !important;
-    height: 100px !important; /* Tampilkan 3-4 item */
+    border-radius: 8px !important; /* <-- DISESUAIKAN: Standar form input */
+    box-sizing: border-box !important;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    background-color: var(--bg-white) !important;
+    
+    /* height: 80px !important; <-- DIHAPUS */
   }
 
   .mapel-kelas-select:focus {
     border-color: var(--primary-color) !important;
-    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25) !important;
+    box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.25) !important;
     outline: none;
   }
 
   .mapel-kelas-remove {
-    width: 30px !important;
-    height: 30px !important;
+    width: 36px !important;
+    height: 48px !important; /* <-- DIRUBAH: Disesuaikan dgn tinggi input */
     padding: 0 !important;
     font-size: 16px !important;
-    flex-shrink: 0;
     background-color: var(--danger-color) !important;
     color: white !important;
-    border-radius: 50% !important;
+    border-radius: 6px !important; /* <-- DIRUBAH: Bukan lingkaran */
   }
   .mapel-kelas-remove:hover {
     background-color: #b02a37 !important;
+  }
+
+  .mapel-kelas-remove i {
+    pointer-events: none;
   }
 
   /* --- ============================================= --- */
