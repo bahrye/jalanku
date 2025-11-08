@@ -7008,31 +7008,37 @@ function populateSiswaFilters() {
       const mode = document.getElementById('modal-guru-mode').value;
       const originalEmail = document.getElementById('modal-guru-original-email').value;
       
-      // Cek mode UI
       const modal = document.getElementById('guru-modal');
       const isSingleClassMode = (modal.dataset.isSingleClassMode === 'true');
 
-      const mapelKelasData = {};
+      // --- LOGIKA PENYIMPANAN YANG DIPERBARUI ---
+      const mapelKelasData = {}; // Ini akan jadi: { "MTK": ["VI", "VI.B"], "IPA": ["VI"] }
 
       if (isSingleClassMode) {
-        // Baca dari UI LAMA (Tags)
+        // Baca dari UI LAMA (Tags) - Tidak berubah
         document.querySelectorAll('#modal-guru-mapel-selected .selected-mapel-tag-remove').forEach(tag => {
           mapelKelasData[tag.dataset.id] = ["*"]; // "*" = Semua Kelas
         });
       } else {
-        // Baca dari UI BARU (List)
+        // Baca dari UI BARU (List dropdown tunggal)
         document.querySelectorAll('#modal-guru-mapel-kelas-list .mapel-kelas-row').forEach(row => {
           const mapelId = row.dataset.mapelId;
           const select = row.querySelector('.mapel-kelas-select');
-          const selectedKelas = Array.from(select.selectedOptions).map(opt => opt.value);
+          const selectedKelas = select.value;
           
-          if (selectedKelas.length > 0) {
-            mapelKelasData[mapelId] = selectedKelas;
-          } else {
-            // Jika tidak ada kelas dipilih, jangan simpan mapel ini
+          if (selectedKelas) { // Hanya proses jika kelas dipilih (bukan "-- Pilih Kelas --")
+            if (!mapelKelasData[mapelId]) {
+              mapelKelasData[mapelId] = []; // Buat array jika ini mapel pertama
+            }
+            
+            // Tambahkan kelas ke array, pastikan unik (mencegah duplikat manual)
+            if (!mapelKelasData[mapelId].includes(selectedKelas)) {
+              mapelKelasData[mapelId].push(selectedKelas);
+            }
           }
         });
       }
+      // --- AKHIR LOGIKA PENYIMPANAN ---
 
       if (!nama || !email) {
           resetButtonLoading(document.getElementById('btn-simpan-guru'));
@@ -7056,7 +7062,7 @@ function populateSiswaFilters() {
           nama: nama,
           email: email,
           password: password,
-          mapelKelas: mapelKelasData // Kirim objek JSON
+          mapelKelas: mapelKelasData // Kirim objek (bukan JSON string)
       };
 
       google.script.run
@@ -7160,36 +7166,41 @@ function populateSiswaFilters() {
 
   /**
    * [BARU] Helper untuk UI Multi-Kelas: Render baris baru (Mapel + Pilihan Kelas)
+   * VERSI REVISI: Menggunakan <select> tunggal, bukan multiple.
    */
-  function addMapelKelasRow(mapelId, mapelNama, selectedKelas = []) {
+  function addMapelKelasRow(mapelId, mapelNama, selectedKelas = "") { // Terima string, bukan array
     const container = document.getElementById('modal-guru-mapel-kelas-list');
     
     // Buat opsi <select>
-    let classOptions = '';
+    let classOptions = '<option value="">-- Pilih Kelas --</option>'; // Tambah opsi default
+    
     if (globalKelasListCache.length > 0) {
-      classOptions = globalKelasListCache.map(kelas => {
-        const isSelected = selectedKelas.includes(kelas.nama) ? 'selected' : '';
+      classOptions += globalKelasListCache.map(kelas => {
+        // Cek apakah kelas ini yang terpilih
+        const isSelected = (selectedKelas === kelas.nama) ? 'selected' : '';
         return `<option value="${kelas.nama}" ${isSelected}>${kelas.nama}</option>`;
       }).join('');
     } else {
-      classOptions = '<option disabled>Tidak ada kelas</option>';
+      classOptions = '<option value="">-- Tidak ada kelas --</option>';
     }
 
     const rowHtml = `
       <div class="mapel-kelas-row" data-mapel-id="${mapelId}">
         <span class="mapel-kelas-nama">${mapelId} - ${mapelNama}</span>
         <div class="mapel-kelas-select-wrapper">
-            <select class="mapel-kelas-select" multiple>
+            <select class="mapel-kelas-select">
                 ${classOptions}
             </select>
         </div>
-        <button type="button" class="mapel-kelas-remove" data-id="${mapelId}" title="Hapus Mapel">&times;</button>
+        <button type="button" class="mapel-kelas-remove" data-id="${mapelId}" title="Hapus Baris Ini">
+          <i class="fas fa-trash-alt"></i>
+        </button>
       </div>
     `;
     
     container.innerHTML += rowHtml;
 
-    // Reset input pencarian
+    // Reset input pencarian (ini penting untuk UI)
     const searchInput = document.getElementById('modal-guru-mapel-kelas-search');
     const suggestionsContainer = document.getElementById('modal-guru-mapel-kelas-suggestions');
     searchInput.value = "";
@@ -7200,6 +7211,7 @@ function populateSiswaFilters() {
 
   /**
    * [BARU] Helper untuk UI Multi-Kelas: Merender seluruh daftar saat edit
+   * VERSI REVISI: Membuat satu baris untuk setiap pasangan mapel-kelas.
    */
   function renderMapelKelasList(mapelKelasData) {
     const container = document.getElementById('modal-guru-mapel-kelas-list');
@@ -7214,13 +7226,21 @@ function populateSiswaFilters() {
     for (const mapelId in mapelKelasData) {
       const mapel = globalMapelList.find(m => m.id === mapelId);
       if (mapel) {
-        const selectedKelas = mapelKelasData[mapelId];
-        // Pastikan selectedKelas adalah array (untuk kasus lawas "*")
-        const kelasArray = Array.isArray(selectedKelas) ? selectedKelas : [];
+        const selectedKelas = mapelKelasData[mapelId]; // Ini array, misal: ["VI", "VI.B"] or ["*"]
+        let kelasArray = Array.isArray(selectedKelas) ? selectedKelas : [];
         
-        // Jangan render jika kelasnya ["*"] di mode multi-kelas
-        if (!kelasArray.includes("*")) {
-          addMapelKelasRow(mapel.id, mapel.nama, kelasArray);
+        if (kelasArray.includes("*")) {
+          // Jika datanya ["*"] (Semua Kelas), buat satu baris untuk setiap kelas yang ada
+          kelasArray = globalKelasListCache.map(k => k.nama);
+        }
+
+        if (kelasArray.length > 0) {
+          // --- PERUBAHAN LOGIKA INTI ---
+          // Buat satu baris untuk SETIAP kelas dalam array
+          kelasArray.forEach(namaKelas => {
+            addMapelKelasRow(mapel.id, mapel.nama, namaKelas);
+          });
+          // --- AKHIR PERUBAHAN ---
         }
       }
     }
