@@ -653,6 +653,7 @@
         <div class="page-header">
           <h2>Kelola Data Guru</h2>
           <div class="header-buttons">
+            <button id="btn-cetak-kartu-guru" style="background-color: #fd7e14;"><i class="fas fa-print"></i>Cetak Kartu Login</button>
             <button id="btn-tambah-guru-baru"><i class="fas fa-plus"></i>Tambah Guru</button>
             <button id="btn-import-guru"><i class="fas fa-upload"></i>Import Guru</button>
           </div>
@@ -1441,9 +1442,19 @@
       </div>
     </div>
 
+    <div id="halaman-cetak-kartu" style="display: none;">
+      <div class="print-toolbar">
+        <button id="btn-tutup-halaman-cetak" class="btn-aksi" style="background-color: var(--secondary-color);"><i class="fas fa-times"></i> Tutup</button>
+        <button id="btn-print-kartu" class="btn-aksi" style="background-color: var(--primary-color);"><i class="fas fa-print"></i> Cetak</button>
+      </div>
+      <div id="kartu-container">
+        </div>
+    </div>
+
     <canvas id="confetti-canvas" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10001; pointer-events: none;"></canvas>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <footer class="universal-footer">
       <a href="https://wa.me/qr/FMVS3NLDIRUAA1" target="_blank" rel="noopener noreferrer">
         <p>&copy; <span id="footer-year">2025</span> Created by Syamsul Bahri
