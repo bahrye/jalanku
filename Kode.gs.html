@@ -587,6 +587,7 @@ function clearMapelCache(sekolahID) {
 
 function prosesLogin(email, password) {
   try {
+    const appUrl = ScriptApp.getService().getUrl();
     const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
     
     const sheetSuperadmin = getSheetSuperadmin(masterSS);
@@ -607,7 +608,8 @@ function prosesLogin(email, password) {
           status: "sukses",
           role: "superadmin",
           nama: rowData[1],
-          token: token
+          token: token,
+          appUrl: appUrl
         };
       }
     }
@@ -656,7 +658,8 @@ function prosesLogin(email, password) {
       namaSekolah: namaSekolahUpper,
       jenjang: cachedRow[2],
       jenjangPilihan: jenjangPilihan,
-      token: token
+      token: token,
+      appUrl: appUrl
     };
   } catch (e) {
     return { status: "gagal", message: "Terjadi error: " + e.message };
@@ -803,11 +806,14 @@ function validateAndRefreshSession(token) {
 function checkToken(tokenFromClient) {
   try {
     const sessionData = validateAndRefreshSession(tokenFromClient);
+    const appUrl = ScriptApp.getService().getUrl(); // <-- TAMBAHKAN INI
+
     if (sessionData.role === 'superadmin') {
       return {
         status: "sukses",
         role: "superadmin",
-        namaSekolah: sessionData.nama
+        namaSekolah: sessionData.nama,
+        appUrl: appUrl // <-- TAMBAHKAN INI
       };
     } else if (sessionData.role === 'admin') {
       return {
@@ -816,7 +822,8 @@ function checkToken(tokenFromClient) {
         isImpersonating: sessionData.isImpersonating === true,
         namaSekolah: sessionData.namaSekolah,
         jenjang: sessionData.jenjang,
-        jenjangPilihan: sessionData.jenjangPilihan
+        jenjangPilihan: sessionData.jenjangPilihan,
+        appUrl: appUrl // <-- TAMBAHKAN INI
       };
     } else if (sessionData.role === 'guru') {
       return {
@@ -826,7 +833,8 @@ function checkToken(tokenFromClient) {
         namaGuru: sessionData.namaGuru,
         jenjangPilihan: sessionData.jenjangPilihan,
         hasUjianPraktek: sessionData.hasUjianPraktek,
-        hasUjianMadrasah: sessionData.hasUjianMadrasah
+        hasUjianMadrasah: sessionData.hasUjianMadrasah,
+        appUrl: appUrl // <-- TAMBAHKAN INI
       };
     } else {
       throw new Error("Sesi tidak valid (role tidak dikenal).");
@@ -1001,6 +1009,8 @@ function superadminImpersonate(sekolahID, token) {
     sessionData.spreadsheetID = spreadsheetID;
     sessionData.jenjangPilihan = jenjangPilihan;
 
+    const appUrl = ScriptApp.getService().getUrl();
+
     CacheService.getScriptCache().put('SESSION_' + token, JSON.stringify(sessionData), 21600);
 
     return {
@@ -1010,7 +1020,8 @@ function superadminImpersonate(sekolahID, token) {
       namaSekolah: sessionData.namaSekolah,
       jenjang: sessionData.jenjang,
       jenjangPilihan: jenjangPilihan,
-      token: token
+      token: token,
+      appUrl: appUrl
     };
   } catch (e) {
     return { status: "gagal", message: "Terjadi error: " + e.message };
@@ -4254,6 +4265,8 @@ function prosesLoginGuru(npsn, email, password) {
     }
 
     const guruEmailFinder = sheetGuru.getRange("A2:A").createTextFinder(email).matchEntireCell(true).findAll();
+
+    const appUrl = ScriptApp.getService().getUrl();
     
     if (guruEmailFinder.length > 0) {
       const rowNum = guruEmailFinder[0].getRow();
@@ -4349,7 +4362,8 @@ function prosesLoginGuru(npsn, email, password) {
           jenjangPilihan: jenjangPilihan,
           hasUjianPraktek: hasPraktek,
           hasUjianMadrasah: hasMadrasah,
-          token: token
+          token: token,
+          appUrl: appUrl
         };
       }
     }
@@ -4825,5 +4839,84 @@ function cekWaktuInputGuru(ss) {
     Logger.log("Error cekWaktuInputGuru: " + e.message);
     // Gagal-safe: Asumsikan TIDAK diizinkan jika terjadi error
     return { diizinkan: false, pesan: "Gagal memvalidasi izin input. Hubungi Admin." };
+  }
+}
+
+/**
+ * Helper untuk membuat password acak sederhana.
+ */
+function generateRandomPassword() {
+  const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let password = '';
+  for (let i = 0; i < 8; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return password;
+}
+
+/**
+ * [ADMIN] Membuat data kartu login untuk SEMUA guru.
+ * PENTING: Ini akan MENGGANTI (RESET) semua password guru yang ada.
+ * VERSI REVISI: Menambahkan NPSN sekolah ke data respons.
+ */
+function generateGuruLoginCards(token) {
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(30000); // Kunci dokumen selama 30 detik
+  
+  try {
+    const { sessionData, spreadsheetID } = validateAdminSession(token); // Ambil spreadsheetID
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getGuruSheet(ss);
+    
+    // --- TAMBAHAN BARU: Ambil NPSN ---
+    const sheetDataSekolah = getDataSekolahSheet(ss); // Fungsi ini sudah ada
+    const npsn = sheetDataSekolah.getRange('B2').getValue() || 'N/A'; // Kolom B adalah NPSN
+    // --- AKHIR TAMBAHAN ---
+
+    const dataRange = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4); // Kolom A-D (Email, Nama, Hash, Salt)
+    const data = dataRange.getValues();
+    
+    const cardData = [];
+    const updatedData = [];
+
+    for (let i = 0; i < data.length; i++) {
+      const email = data[i][0];
+      const nama = data[i][1];
+      
+      if (!email || !nama) {
+        continue; // Lewati baris kosong
+      }
+
+      // 1. Buat password baru
+      const newPassword = generateRandomPassword();
+      
+      // 2. Buat hash & salt baru
+      const newSalt = generateSalt();
+      const newHash = hashPassword(newPassword, newSalt);
+      
+      // 3. Siapkan data untuk ditulis kembali ke sheet
+      updatedData.push([email, nama, newHash, newSalt]);
+      
+      // 4. Siapkan data untuk dikirim ke klien (dengan password plain text baru)
+      cardData.push({
+        email: email,
+        nama: nama,
+        newPassword: newPassword
+      });
+    }
+
+    // 5. Tulis SEMUA password baru ke sheet dalam satu operasi
+    if (updatedData.length > 0) {
+      sheet.getRange(2, 1, updatedData.length, 4).setValues(updatedData);
+    }
+
+    // --- PERUBAHAN DI SINI: Tambahkan npsn ke respons ---
+    return { status: "sukses", cardData: cardData, npsn: npsn };
+
+  } catch (e) {
+    Logger.log("Error generateGuruLoginCards: " + e.message);
+    return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
   }
 }
