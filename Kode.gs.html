@@ -451,52 +451,134 @@ function clearMasterSheetCache() {
 function clearRekapNilaiCache(sekolahID) {
   try {
     const cacheKey = REKAP_NILAI_CACHE_KEY + "_" + sekolahID;
-    CacheService.getUserCache().remove(cacheKey);
+    
+    // --- PERBAIKAN ---
+    CacheService.getScriptCache().remove(cacheKey);
+    // --- AKHIR PERBAIKAN ---
+
   } catch (e) {
   }
 }
 
-function clearNilaiUjianCache(sekolahID) {
+function clearNilaiUjianCache(sekolahID, spreadsheetID) { // <--- Terima spreadsheetID
   try {
-    const userCache = CacheService.getUserCache();
-    userCache.remove(NILAI_GRID_CACHE_KEY_PREFIX + 'UM' + "_" + sekolahID);
-    userCache.remove(NILAI_GRID_CACHE_KEY_PREFIX + 'Praktek' + "_" + sekolahID);
+    const scriptCache = CacheService.getScriptCache();
+    // Hapus cache admin
+    scriptCache.remove(NILAI_GRID_CACHE_KEY_PREFIX + 'UM' + "_" + sekolahID);
+    scriptCache.remove(NILAI_GRID_CACHE_KEY_PREFIX + 'Praktek' + "_" + sekolahID);
+
+    // --- PERBAIKAN: Gunakan 'spreadsheetID' yang dikirim ---
+    if (spreadsheetID) {
+      const ss = SpreadsheetApp.openById(spreadsheetID);
+      const sheetGuru = ss.getSheetByName('Akun_Guru');
+    // --- AKHIR PERBAIKAN ---
+
+      if (sheetGuru) {
+        const guruData = sheetGuru.getDataRange().getValues();
+        guruData.shift();
+        // Loop semua guru di sekolah ini dan hapus cache mereka
+        guruData.forEach(row => {
+          const namaGuru = row[1];
+          if (namaGuru) {
+            const suffix = `_GURU_${namaGuru.replace(/\s+/g, '')}`;
+            scriptCache.remove(NILAI_GRID_CACHE_KEY_PREFIX + 'UM' + "_" + sekolahID + suffix);
+            scriptCache.remove(NILAI_GRID_CACHE_KEY_PREFIX + 'Praktek' + "_" + sekolahID + suffix);
+          }
+        });
+      }
+    } // Akhir dari 'if (spreadsheetID)'
+    
     clearRekapNilaiCache(sekolahID);
   } catch (e) {
+     Logger.log("Gagal clearNilaiUjianCache: " + e.message);
   }
 }
 
 function clearRekapNilaiRaporCache(sekolahID) {
   try {
     const cacheKey = REKAP_NILAI_RAPOR_CACHE_KEY + "_" + sekolahID;
-    CacheService.getUserCache().remove(cacheKey);
+    
+    // --- PERBAIKAN ---
+    CacheService.getScriptCache().remove(cacheKey);
+    // --- AKHIR PERBAIKAN ---
+
   } catch (e) {
   }
 }
 
-function clearNilaiRaporCache(sekolahID) {
+function clearNilaiRaporCache(sekolahID, spreadsheetID) { // <--- Terima spreadsheetID
   try {
-    const userCache = CacheService.getUserCache();
-    userCache.remove(REKAP_NILAI_RAPOR_CACHE_KEY + "_" + sekolahID);
-    userCache.remove(NILAI_IJAZAH_CACHE_KEY + "_" + sekolahID);
+    const scriptCache = CacheService.getScriptCache();
+    scriptCache.remove(REKAP_NILAI_RAPOR_CACHE_KEY + "_" + sekolahID);
+    scriptCache.remove(NILAI_IJAZAH_CACHE_KEY + "_" + sekolahID);
+    
+    // Hapus juga cache grid rapor (per semester)
+    if (spreadsheetID) {
+        const ss = SpreadsheetApp.openById(spreadsheetID);
+        
+        // Ambil 'jenjang' dari data sekolah
+        const sheetDataSekolah = getDataSekolahSheet(ss);
+        const jenjangPilihan = sheetDataSekolah.getRange('A2').getValue();
+        // Tentukan jenjang berdasarkan jenjangPilihan
+        const jenjang = jenjangPilihan.includes('SD') || jenjangPilihan.includes('MI') ? 'SD/MI' : (jenjangPilihan.includes('SMP') || jenjangPilihan.includes('MTS') ? 'SMP/MTS' : 'SMA/MA');
+
+        const sheetSetting = getPengaturanSheet(ss);
+        const data = sheetSetting.getRange('A1:B' + sheetSetting.getLastRow()).getValues();
+        let jumlahSemester = 5;
+        for (let i = 0; i < data.length; i++) {
+          if (data[i][0] === 'Jumlah_Semester') {
+            jumlahSemester = parseInt(data[i][1], 10) || 5;
+            break;
+          }
+        }
+        
+        // Tentukan daftar semester ID
+        let semesterList = [];
+        if (jenjang === 'SD/MI') {
+          if (jumlahSemester === 3) semesterList = [{ id: "K5_S1" }, { id: "K5_S2" }, { id: "K6_S1" }];
+          else semesterList = [{ id: "K4_S1" }, { id: "K4_S2" }, { id: "K5_S1" }, { id: "K5_S2" }, { id: "K6_S1" }];
+        } else if (jenjang === 'SMP/MTS') {
+          semesterList = [{ id: "K7_S1" }, { id: "K7_S2" }, { id: "K8_S1" }, { id: "K8_S2" }, { id: "K9_S1" }];
+        } else if (jenjang === 'SMA/MA') {
+          semesterList = [{ id: "K10_S1" }, { id: "K10_S2" }, { id: "K11_S1" }, { id: "K11_S2" }, { id: "K12_S1" }];
+        }
+        
+        // Hapus cache grid per semester
+        semesterList.forEach(sem => {
+            scriptCache.remove(NILAI_RAPOR_GRID_CACHE_KEY_PREFIX + sem.id + "_" + sekolahID);
+        });
+    }
+    
   } catch (e) {
+    Logger.log("Gagal clearNilaiRaporCache: " + e.message);
   }
 }
 
-function clearSiswaCache(sekolahID) {
+function clearSiswaCache(sekolahID, spreadsheetID) { // <--- Terima spreadsheetID
   try {
     const cacheKey = SISWA_CACHE_KEY + "_" + sekolahID;
-    CacheService.getUserCache().remove(cacheKey);
-    clearNilaiUjianCache(sekolahID);
-    clearNilaiRaporCache(sekolahID);
+    CacheService.getScriptCache().remove(cacheKey);
+    
+    // --- PERBAIKAN: Teruskan spreadsheetID ---
+    clearNilaiUjianCache(sekolahID, spreadsheetID);
+    clearNilaiRaporCache(sekolahID, spreadsheetID);
+    // --- AKHIR PERBAIKAN ---
+
+    clearLockedKelasCache(sekolahID); // Ini tidak perlu spreadsheetID
+
   } catch (e) {
+     Logger.log("Gagal clearSiswaCache: " + e.message);
   }
 }
 
 function clearMapelCache(sekolahID) {
   try {
     const cacheKey = MAPEL_CACHE_KEY + "_" + sekolahID;
-    CacheService.getUserCache().remove(cacheKey);
+    
+    // --- PERBAIKAN ---
+    CacheService.getScriptCache().remove(cacheKey);
+    // --- AKHIR PERBAIKAN ---
+    
     clearNilaiUjianCache(sekolahID);
     clearNilaiRaporCache(sekolahID);
   } catch (e) {
@@ -1418,8 +1500,12 @@ function getSiswa(token) {
     const { sessionData, spreadsheetID } = validateAdminOrGuruSession(token);
     const sekolahID = sessionData.sekolahID;
     const cacheKey = SISWA_CACHE_KEY + "_" + sekolahID;
-    const userCache = CacheService.getUserCache();
-    const cachedSiswa = userCache.get(cacheKey);
+    
+    // --- PERBAIKAN ---
+    const scriptCache = CacheService.getScriptCache();
+    const cachedSiswa = scriptCache.get(cacheKey);
+    // --- AKHIR PERBAIKAN ---
+
     if (cachedSiswa != null) {
       return { status: "sukses", siswa: JSON.parse(cachedSiswa) };
     }
@@ -1446,7 +1532,11 @@ function getSiswa(token) {
       if (kelasCompare !== 0) return kelasCompare;
       return (Number(a.urutan) || 0) - (Number(b.urutan) || 0);
     });
-    userCache.put(cacheKey, JSON.stringify(siswaList), 3600);
+    
+    // --- PERBAIKAN ---
+    scriptCache.put(cacheKey, JSON.stringify(siswaList), 3600);
+    // --- AKHIR PERBAIKAN ---
+
     return { status: "sukses", siswa: siswaList };
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -1488,7 +1578,11 @@ function createSiswa(token, dataSiswa) {
       dataSiswa.jk, dataSiswa.tempatLahir, dataSiswa.tglLahir || null,
       dataSiswa.kelas, newUrutan
     ]);
-    clearSiswaCache(sessionData.sekolahID);
+
+    // --- PERBAIKAN DI SINI ---
+    clearSiswaCache(sessionData.sekolahID, spreadsheetID);
+    // --- AKHIR PERBAIKAN ---
+
     return { status: "sukses" };
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -1517,7 +1611,11 @@ function updateSiswa(token, dataSiswa) {
       dataSiswa.jk, dataSiswa.tempatLahir, dataSiswa.tglLahir || null, dataSiswa.kelas
     ];
     sheet.getRange(rowToUpdate, 1, 1, updatedRow.length).setValues([updatedRow]);
-    clearSiswaCache(sessionData.sekolahID);
+    
+    // --- PERBAIKAN DI SINI ---
+    clearSiswaCache(sessionData.sekolahID, spreadsheetID);
+    // --- AKHIR PERBAIKAN ---
+
     return { status: "sukses" };
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -1526,7 +1624,7 @@ function updateSiswa(token, dataSiswa) {
 
 function deleteSiswa(token, siswaID) {
   try {
-    const { sessionData, spreadsheetID } = validateAdminSession(token);
+    const { sessionData, spreadsheetID } = validateAdminSession(token); // <--- Ambil spreadsheetID
     if (!siswaID) return { status: "gagal", message: "SiswaID kosong." };
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheet = getSiswaSheet(ss);
@@ -1534,7 +1632,11 @@ function deleteSiswa(token, siswaID) {
     for (let i = data.length - 1; i >= 1; i--) {
       if (data[i][0] == siswaID) {
         sheet.deleteRow(i + 1);
-        clearSiswaCache(sessionData.sekolahID);
+        
+        // --- PERBAIKAN DI SINI ---
+        clearSiswaCache(sessionData.sekolahID, spreadsheetID);
+        // --- AKHIR PERBAIKAN ---
+
         return { status: "sukses" };
       }
     }
@@ -1546,14 +1648,18 @@ function deleteSiswa(token, siswaID) {
 
 function deleteAllSiswa(token) {
   try {
-    const { sessionData, spreadsheetID } = validateAdminSession(token);
+    const { sessionData, spreadsheetID } = validateAdminSession(token); // <--- Ambil spreadsheetID
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheet = getSiswaSheet(ss);
     const lastRow = sheet.getLastRow();
     if (lastRow > 1) {
       sheet.deleteRows(2, lastRow - 1);
     }
-    clearSiswaCache(sessionData.sekolahID);
+    
+    // --- PERBAIKAN DI SINI ---
+    clearSiswaCache(sessionData.sekolahID, spreadsheetID);
+    // --- AKHIR PERBAIKAN ---
+
     return { status: "sukses", message: "Semua data siswa dihapus." };
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -1858,7 +1964,7 @@ function saveKelas(token, kelasList) {
   let spreadsheetID, sessionData;
   try {
     const session = validateAdminSession(token);
-    spreadsheetID = session.spreadsheetID;
+    spreadsheetID = session.spreadsheetID; // <--- Ambil spreadsheetID
     sessionData = session.sessionData;
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -1888,7 +1994,11 @@ function saveKelas(token, kelasList) {
       const dataToSave = kelasList.map(nama => [nama]);
       sheet.getRange(2, 1, dataToSave.length, 1).setValues(dataToSave);
     }
-    clearSiswaCache(sessionData.sekolahID);
+    
+    // --- PERBAIKAN DI SINI ---
+    clearSiswaCache(sessionData.sekolahID, spreadsheetID);
+    // --- AKHIR PERBAIKAN ---
+    
     clearLockedKelasCache(sessionData.sekolahID);
     return { status: "sukses" };
   } catch (e) {
@@ -2020,7 +2130,11 @@ function prosesImportExcelSiswa(token, fileData) {
     }
     DriveApp.getFileById(tempExcelFileId).setTrashed(true);
     DriveApp.getFileById(tempConvertedSheetId).setTrashed(true);
-    clearSiswaCache(sessionData.sekolahID);
+    
+    // --- PERBAIKAN DI SINI ---
+    clearSiswaCache(sessionData.sekolahID, spreadsheetID);
+    // --- AKHIR PERBAIKAN ---
+
     return {
       status: "sukses",
       totalDiProses: excelData.length,
@@ -2096,7 +2210,7 @@ function saveSiswaUrutanBatch(token, urutanData) {
   let spreadsheetID, sessionData;
   try {
     const session = validateAdminSession(token);
-    spreadsheetID = session.spreadsheetID;
+    spreadsheetID = session.spreadsheetID; // <--- Ambil spreadsheetID
     sessionData = session.sessionData;
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -2123,7 +2237,10 @@ function saveSiswaUrutanBatch(token, urutanData) {
       if (valuesToUpdate.length > 0) {
         sheet.getRange(2, 9, valuesToUpdate.length, 1).setValues(valuesToUpdate);
       }
-      clearSiswaCache(sessionData.sekolahID);
+      
+      // --- PERBAIKAN DI SINI ---
+      clearSiswaCache(sessionData.sekolahID, spreadsheetID);
+      // --- AKHIR PERBAIKAN ---
     }
     return { status: "sukses" };
   } catch (e) {
@@ -2156,27 +2273,59 @@ function getNilaiUjianGridData(token, tipeUjian) {
     const spreadsheetID = sessionData.spreadsheetID;
     const sekolahID = sessionData.sekolahID;
     const isGuru = (sessionData.role === 'guru');
+    
+    // --- AMBIL DATA SPESIFIK GURU ---
     const assignedMapelSet = isGuru ? new Set(sessionData.assignedMapel) : null;
+    const assignedKelasSet = isGuru ? new Set(sessionData.assignedKelas) : null;
+    const mapelKelasData = isGuru ? sessionData.mapelKelasData : null;
+    // --- AKHIR PENGAMBILAN DATA ---
 
-    const userCache = CacheService.getUserCache();
+    const scriptCache = CacheService.getScriptCache();
     const cacheKeySuffix = isGuru ? `_GURU_${sessionData.namaGuru.replace(/\s+/g, '')}` : '';
     const cacheKey = NILAI_GRID_CACHE_KEY_PREFIX + tipeUjian + "_" + sekolahID + cacheKeySuffix;
     
-    const cachedData = userCache.get(cacheKey);
+    const cachedData = scriptCache.get(cacheKey);
     if (cachedData != null) {
-      return JSON.parse(cachedData);
+      const ss = SpreadsheetApp.openById(spreadsheetID);
+      let cekWaktu = { diizinkan: true, pesan: "" };
+      if (isGuru) {
+        cekWaktu = cekWaktuInputGuru(ss);
+      }
+      const parsedCache = JSON.parse(cachedData);
+      parsedCache.data.isInputDiizinkan = cekWaktu.diizinkan;
+      parsedCache.data.pesanInput = cekWaktu.pesan;
+      // --- PERBAIKAN: Selalu tambahkan mapelKelasData ---
+      parsedCache.data.mapelKelasData = mapelKelasData;
+      // --- AKHIR PERBAIKAN ---
+      return parsedCache;
     }
 
     const ss = SpreadsheetApp.openById(spreadsheetID);
+
+    let cekWaktu = { diizinkan: true, pesan: "" };
+    if (isGuru) {
+      cekWaktu = cekWaktuInputGuru(ss);
+    }
+
     const sheetSiswa = getSiswaSheet(ss);
     const dataSiswa = sheetSiswa.getDataRange().getValues();
     dataSiswa.shift();
-    const siswaList = dataSiswa.map(row => ({
+    
+    // --- PERBAIKAN: Filter siswaList untuk guru ---
+    let siswaList = dataSiswa.map(row => ({
       id: row[0], nama: row[1], nisn: row[2], kelas: row[7], urutan: Number(row[8] || 0)
-    })).sort((a, b) => {
+    }));
+
+    if (isGuru) {
+      siswaList = siswaList.filter(siswa => assignedKelasSet.has(siswa.kelas));
+    }
+
+    siswaList.sort((a, b) => {
       const kc = a.kelas.localeCompare(b.kelas);
       return kc !== 0 ? kc : a.urutan - b.urutan;
     });
+    // --- AKHIR PERBAIKAN ---
+
 
     let mapelListFull = getMapelDataInternal(ss, sekolahID);
     
@@ -2196,8 +2345,20 @@ function getNilaiUjianGridData(token, tipeUjian) {
       nilaiData[key] = (tipeUjian === 'UM') ? row[2] : row[3];
     });
 
-    const response = { status: "sukses", data: { siswaList, mapelList, nilaiData } };
-    userCache.put(cacheKey, JSON.stringify(response), 600);
+    const response = { 
+      status: "sukses", 
+      data: { 
+        siswaList, 
+        mapelList, 
+        nilaiData,
+        isInputDiizinkan: cekWaktu.diizinkan,
+        pesanInput: cekWaktu.pesan,
+        // --- TAMBAHKAN INI ---
+        mapelKelasData: mapelKelasData 
+        // --- AKHIR TAMBAHAN ---
+      } 
+    };
+    scriptCache.put(cacheKey, JSON.stringify(response), 600);
     return response;
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -2209,6 +2370,17 @@ function saveNilaiUjianBatch(token, dataToSave) {
     const sessionData = validateAndRefreshSession(token);
     const spreadsheetID = sessionData.spreadsheetID;
     const isGuru = (sessionData.role === 'guru');
+
+    // --- TAMBAHKAN BLOK INI ---
+    const ss = SpreadsheetApp.openById(spreadsheetID); // Buka SS di awal
+    if (isGuru) {
+      const cekWaktu = cekWaktuInputGuru(ss);
+      if (!cekWaktu.diizinkan) {
+        // Jika tidak diizinkan, langsung kembalikan error
+        return { status: "gagal", message: cekWaktu.pesan };
+      }
+    }
+    // --- AKHIR TAMBAHAN ---
 
     if (isGuru) {
       const assignedSet = new Set(sessionData.assignedMapel);
@@ -2222,8 +2394,8 @@ function saveNilaiUjianBatch(token, dataToSave) {
     const lock = LockService.getDocumentLock();
     lock.waitLock(15000);
     try {
-      const ss = SpreadsheetApp.openById(spreadsheetID);
-      const sheet = getNilaiUjianSheet(ss);
+      // const ss = SpreadsheetApp.openById(spreadsheetID); // <-- Baris ini dipindah ke atas
+      const sheet = getNilaiUjianSheet(ss); // <-- Gunakan 'ss' dari atas
       const data = sheet.getDataRange().getValues();
       const dataMap = new Map();
       for (let i = 1; i < data.length; i++) {
@@ -2269,13 +2441,18 @@ function saveNilaiUjianBatch(token, dataToSave) {
       }
       
       const sekolahID = sessionData.sekolahID;
-      const userCache = CacheService.getUserCache();
       
+      // --- PERBAIKAN ---
+      const scriptCache = CacheService.getScriptCache();
+      // --- AKHIR PERBAIKAN ---
+
       if (tipeUjianDisimpan) {
-         userCache.remove(NILAI_GRID_CACHE_KEY_PREFIX + tipeUjianDisimpan + "_" + sekolahID);
+         // --- PERBAIKAN ---
+         scriptCache.remove(NILAI_GRID_CACHE_KEY_PREFIX + tipeUjianDisimpan + "_" + sekolahID);
          if (isGuru) {
-             userCache.remove(NILAI_GRID_CACHE_KEY_PREFIX + tipeUjianDisimpan + "_" + sekolahID + `_GURU_${sessionData.namaGuru.replace(/\s+/g, '')}`);
+             scriptCache.remove(NILAI_GRID_CACHE_KEY_PREFIX + tipeUjianDisimpan + "_" + sekolahID + `_GURU_${sessionData.namaGuru.replace(/\s+/g, '')}`);
          }
+         // --- AKHIR PERBAIKAN ---
       } else {
          clearNilaiUjianCache(sekolahID);
       }
@@ -2384,9 +2561,17 @@ function getRekapitulasiNilaiData(token) {
   try {
     const { sessionData, spreadsheetID } = validateAdminSession(token);
     const sekolahID = sessionData.sekolahID;
-    const userCache = CacheService.getUserCache();
+    
+    // --- PERBAIKAN ---
+    const scriptCache = CacheService.getScriptCache();
+    // --- AKHIR PERBAIKAN ---
+
     const cacheKey = REKAP_NILAI_CACHE_KEY + "_" + sekolahID;
-    const cachedData = userCache.get(cacheKey);
+    
+    // --- PERBAIKAN ---
+    const cachedData = scriptCache.get(cacheKey);
+    // --- AKHIR PERBAIKAN ---
+
     if (cachedData != null) {
       return JSON.parse(cachedData);
     }
@@ -2399,7 +2584,11 @@ function getRekapitulasiNilaiData(token) {
     const nilaiRekapDataObj = {};
     nilaiRekapMap.forEach((value, key) => { nilaiRekapDataObj[key] = value; });
     const response = { status: "sukses", data: { siswaList, mapelList, nilaiRekapData: nilaiRekapDataObj } };
-    userCache.put(cacheKey, JSON.stringify(response), 600);
+    
+    // --- PERBAIKAN ---
+    scriptCache.put(cacheKey, JSON.stringify(response), 600);
+    // --- AKHIR PERBAIKAN ---
+    
     return response;
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -2410,9 +2599,17 @@ function getRekapitulasiNilaiRaporData(token) {
   try {
     const { sessionData, spreadsheetID } = validateAdminSession(token);
     const sekolahID = sessionData.sekolahID;
-    const userCache = CacheService.getUserCache();
+    
+    // --- PERBAIKAN ---
+    const scriptCache = CacheService.getScriptCache();
+    // --- AKHIR PERBAIKAN ---
+
     const cacheKey = REKAP_NILAI_RAPOR_CACHE_KEY + "_" + sekolahID;
-    const cachedData = userCache.get(cacheKey);
+    
+    // --- PERBAIKAN ---
+    const cachedData = scriptCache.get(cacheKey);
+    // --- AKHIR PERBAIKAN ---
+
     if (cachedData != null) {
       return JSON.parse(cachedData);
     }
@@ -2431,7 +2628,11 @@ function getRekapitulasiNilaiRaporData(token) {
       status: "sukses",
       data: { siswaList, mapelList, nilaiRekapData: nilaiRekapDataObj, jumlahSemester: semesterIds.length }
     };
-    userCache.put(cacheKey, JSON.stringify(response), 600);
+    
+    // --- PERBAIKAN ---
+    scriptCache.put(cacheKey, JSON.stringify(response), 600);
+    // --- AKHIR PERBAIKAN ---
+
     return response;
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -2549,9 +2750,17 @@ function getNilaiRaporGridData(token, semesterId) {
   try {
     const { sessionData, spreadsheetID } = validateAdminSession(token);
     const sekolahID = sessionData.sekolahID;
-    const userCache = CacheService.getUserCache();
+    
+    // --- PERBAIKAN ---
+    const scriptCache = CacheService.getScriptCache();
+    // --- AKHIR PERBAIKAN ---
+
     const cacheKey = NILAI_RAPOR_GRID_CACHE_KEY_PREFIX + semesterId + "_" + sekolahID;
-    const cachedData = userCache.get(cacheKey);
+    
+    // --- PERBAIKAN ---
+    const cachedData = scriptCache.get(cacheKey);
+    // --- AKHIR PERBAIKAN ---
+
     if (cachedData != null) {
       return JSON.parse(cachedData);
     }
@@ -2606,7 +2815,11 @@ function getNilaiRaporGridData(token, semesterId) {
       dataK: { siswaList, mapelList, nilaiData: nilaiDataK },
       dataRekap: { siswaList, mapelList, nilaiRekapData: nilaiDataRekap }
     };
-    userCache.put(cacheKey, JSON.stringify(response), 600);
+    
+    // --- PERBAIKAN ---
+    scriptCache.put(cacheKey, JSON.stringify(response), 600);
+    // --- AKHIR PERBAIKAN ---
+    
     return response;
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -2671,9 +2884,17 @@ function saveNilaiRaporBatch(token, dataToSave, tipeNilai) {
     }
 
     const sekolahID = sessionData.sekolahID;
-    const userCache = CacheService.getUserCache();
+    
+    // --- PERBAIKAN ---
+    const scriptCache = CacheService.getScriptCache();
+    // --- AKHIR PERBAIKAN ---
+    
     new Set(dataToSave.map(i => i.semesterId)).forEach(semId => {
-      if (semId) userCache.remove(NILAI_RAPOR_GRID_CACHE_KEY_PREFIX + semId + "_" + sekolahID);
+      if (semId) {
+        // --- PERBAIKAN ---
+        scriptCache.remove(NILAI_RAPOR_GRID_CACHE_KEY_PREFIX + semId + "_" + sekolahID);
+        // --- AKHIR PERBAIKAN ---
+      }
     });
     clearRekapNilaiRaporCache(sekolahID);
     clearLockedKelasCache(sekolahID);
@@ -2803,6 +3024,20 @@ function prosesUploadExcelNilai(token, fileData) {
   try {
     const { sessionData, spreadsheetID } = validateAdminOrGuruSession(token);
     const ss = SpreadsheetApp.openById(spreadsheetID);
+
+    // --- TAMBAHAN KEAMANAN UNTUK GURU ---
+    const isGuru = (sessionData.role === 'guru');
+    const assignedMapelSet = isGuru ? new Set(sessionData.assignedMapel) : null;
+
+    // --- TAMBAHKAN BLOK INI ---
+    if (isGuru) {
+      const cekWaktu = cekWaktuInputGuru(ss);
+      if (!cekWaktu.diizinkan) {
+        throw new Error(cekWaktu.pesan); // Hentikan proses upload
+      }
+    }
+    // --- AKHIR TAMBAHAN ---
+
     const sheetSiswa = getSiswaSheet(ss);
     const dataSiswa = sheetSiswa.getDataRange().getValues();
     dataSiswa.shift();
@@ -2811,11 +3046,6 @@ function prosesUploadExcelNilai(token, fileData) {
     const dataMapel = sheetMapel.getDataRange().getValues();
     dataMapel.shift();
     const mapelIdSet = new Set(dataMapel.map(row => row[0]));
-
-    // --- TAMBAHAN KEAMANAN UNTUK GURU ---
-    const isGuru = (sessionData.role === 'guru');
-    const assignedMapelSet = isGuru ? new Set(sessionData.assignedMapel) : null;
-    // --- AKHIR TAMBAHAN ---
 
     const { base64, mimeType, fileName } = fileData;
     const decodedData = Utilities.base64Decode(base64.split(',')[1]);
@@ -2995,8 +3225,12 @@ function prosesUploadExcelNilaiRapor(token, fileData, semesterIdFromModal) {
 
 function getMapelDataInternal(ss, sekolahID) {
   const cacheKey = MAPEL_CACHE_KEY + "_" + sekolahID;
-  const userCache = CacheService.getUserCache();
-  const cachedMapel = userCache.get(cacheKey);
+  
+  // --- PERBAIKAN ---
+  const scriptCache = CacheService.getScriptCache();
+  const cachedMapel = scriptCache.get(cacheKey);
+  // --- AKHIR PERBAIKAN ---
+
   if (cachedMapel != null) {
     return JSON.parse(cachedMapel);
   }
@@ -3010,7 +3244,11 @@ function getMapelDataInternal(ss, sekolahID) {
     isUP: row[3] || false,
     urutan: Number(row[4] || index + 1)
   })).filter(row => row.id).sort((a, b) => a.urutan - b.urutan);
-  userCache.put(cacheKey, JSON.stringify(mapel), 600);
+  
+  // --- PERBAIKAN ---
+  scriptCache.put(cacheKey, JSON.stringify(mapel), 600);
+  // --- AKHIR PERBAIKAN ---
+
   return mapel;
 }
 
@@ -4010,7 +4248,7 @@ function prosesLoginGuru(npsn, email, password) {
     const spreadsheetID = targetSekolah[5];
     const jenjangPilihan = getJenjangPilihanFromSheet(spreadsheetID);
     const ss = SpreadsheetApp.openById(spreadsheetID);
-    const sheetGuru = ss.getSheetByName('Akun_Guru');
+    const sheetGuru = getGuruSheet(ss);
     if (!sheetGuru) {
       return { status: "gagal", message: "Fitur guru belum diaktifkan di sekolah ini. Hubungi Admin." };
     }
@@ -4023,7 +4261,48 @@ function prosesLoginGuru(npsn, email, password) {
       
       if (verifyPassword(password, guruData[2], guruData[3])) {
         
-        const assignedMapel = String(guruData[4]).split(',').map(s => s.trim());
+        // --- ============================================= ---
+        // --- ===== LOGIKA BARU UNTUK MEMBACA MAPEL ===== ---
+        // --- ============================================= ---
+        const dataMapel = guruData[4]; // Kolom E (MapelKelasJSON)
+        let mapelKelasData = {};
+        let assignedMapel = [];
+        let assignedKelas = new Set(); // Gunakan Set untuk data unik
+
+        if (dataMapel) {
+          try {
+            // Coba parse sebagai JSON (Format baru)
+            mapelKelasData = JSON.parse(dataMapel);
+          } catch (e) {
+            // Gagal parse? Ini pasti format lama (string "MTK,IPA")
+            mapelKelasData = {};
+            const mapelArray = String(dataMapel).split(',').map(s => s.trim());
+            mapelArray.forEach(mapelId => {
+              if (mapelId) {
+                mapelKelasData[mapelId] = ["*"]; // "*" berarti "Semua Kelas"
+              }
+            });
+          }
+        }
+
+        // Ekstrak mapel unik dan kelas unik dari data
+        assignedMapel = Object.keys(mapelKelasData);
+        for (const mapel in mapelKelasData) {
+          const kelasArray = mapelKelasData[mapel];
+          if (kelasArray.includes("*")) {
+            // Jika ada "*", berarti dia mengajar semua kelas
+            // Ambil semua kelas dari Sheet Kelas
+            const kelasSheet = getKelasSheet(ss);
+            const semuaKelas = kelasSheet.getDataRange().getValues();
+            semuaKelas.shift(); // Hapus header
+            semuaKelas.forEach(row => assignedKelas.add(row[0]));
+          } else {
+            // Tambahkan kelas spesifik
+            kelasArray.forEach(k => assignedKelas.add(k));
+          }
+        }
+        // --- AKHIR LOGIKA BARU ---
+
         const allMapel = getMapelDataInternal(ss, targetSekolah[0]);
         const mapelUPSet = new Set();
         const mapelUMSet = new Set();
@@ -4051,7 +4330,11 @@ function prosesLoginGuru(npsn, email, password) {
           spreadsheetID: spreadsheetID,
           jenjangPilihan: jenjangPilihan,
           namaGuru: guruData[1],
-          assignedMapel: assignedMapel,
+          // --- PERUBAHAN DATA SESI ---
+          assignedMapel: assignedMapel, // Daftar mapel unik [MTK, IPA]
+          assignedKelas: Array.from(assignedKelas), // Daftar kelas unik [9A, 9B]
+          mapelKelasData: mapelKelasData, // Data JSON lengkap
+          // --- AKHIR PERUBAHAN ---
           hasUjianPraktek: hasPraktek,
           hasUjianMadrasah: hasMadrasah,
           lastActivity: new Date().getTime()
@@ -4082,9 +4365,18 @@ function getGuruSheet(ss) {
   let sheet = ss.getSheetByName('Akun_Guru');
   if (!sheet) {
     sheet = ss.insertSheet('Akun_Guru');
-    // Header: Email, Nama, Password (Hash), Salt, MapelIDs (koma separated)
-    sheet.appendRow(['Email', 'Nama', 'HashedPassword', 'Salt', 'MapelIDs']);
+    // Header: Email, Nama, Password (Hash), Salt, MapelKelasJSON
+    // --- PERUBAHAN NAMA KOLOM ---
+    sheet.appendRow(['Email', 'Nama', 'HashedPassword', 'Salt', 'MapelKelasJSON']);
+    // --- AKHIR PERUBAHAN ---
     sheet.setFrozenRows(1);
+  } else {
+    // --- PERBAIKAN MIGRASI (Jalankan sekali) ---
+    const header = sheet.getRange(1, 5).getValue();
+    if (header === "MapelIDs") {
+      sheet.getRange(1, 5).setValue("MapelKelasJSON");
+    }
+    // --- AKHIR PERBAIKAN ---
   }
   return sheet;
 }
@@ -4097,13 +4389,34 @@ function getGuru(token) {
     const data = sheet.getDataRange().getValues();
     data.shift(); // Hapus header
 
-    // Mapping data agar mudah dibaca di client
-    const guruList = data.map(row => ({
-      email: row[0],
-      nama: row[1],
-      // Password & Salt tidak dikirim ke client demi keamanan
-      mapelIds: row[4] ? String(row[4]).split(',').map(s => s.trim()) : []
-    })).filter(g => g.email); // Hanya ambil yang emailnya ada
+    const guruList = data.map(row => {
+      const email = row[0];
+      const nama = row[1];
+      const dataMapel = row[4]; // Kolom E (MapelKelasJSON)
+      let mapelKelasData = {};
+
+      if (dataMapel) {
+        try {
+          // Coba parse sebagai JSON (Format baru)
+          mapelKelasData = JSON.parse(dataMapel);
+        } catch (e) {
+          // Gagal parse? Ini pasti format lama (string "MTK,IPA")
+          mapelKelasData = {};
+          const mapelArray = String(dataMapel).split(',').map(s => s.trim());
+          mapelArray.forEach(mapelId => {
+            if (mapelId) {
+              mapelKelasData[mapelId] = ["*"]; // "*" berarti "Semua Kelas"
+            }
+          });
+        }
+      }
+
+      return {
+        email: email,
+        nama: nama,
+        mapelKelas: mapelKelasData // Kirim sebagai objek JSON
+      };
+    }).filter(g => g.email); // Hanya ambil yang emailnya ada
 
     return { status: "sukses", guru: guruList };
   } catch (e) {
@@ -4120,23 +4433,21 @@ function saveGuru(token, guruData) {
     const sheet = getGuruSheet(ss);
     const data = sheet.getDataRange().getValues();
 
-    const mapelIdsString = guruData.mapelIds.join(','); // Gabungkan array mapel jadi string
+    // --- PERUBAHAN LOGIKA ---
+    // 'mapelIds' sekarang adalah objek JSON
+    const mapelKelasJSON = JSON.stringify(guruData.mapelKelas); 
+    // --- AKHIR PERUBAHAN ---
 
-    // Cek apakah mode edit (berdasarkan email yang tidak boleh berubah kuncinya, tapi di sini kita pakai email sebagai kunci)
-    // Jika mode edit, kita cari baris berdasarkan email LAMA (jika email bisa diubah, butuh ID unik. Asumsikan email tidak bisa diubah untuk kesederhanaan, atau gunakan hidden old-email)
-    
     let rowIndex = -1;
-    // Kita gunakan flag 'isNew' dari client untuk membedakan tambah/edit
     if (guruData.mode === 'edit') {
        for (let i = 1; i < data.length; i++) {
-         if (data[i][0] === guruData.originalEmail) { // Gunakan email asli untuk mencari
+         if (data[i][0] === guruData.originalEmail) {
            rowIndex = i + 1;
            break;
          }
        }
        if (rowIndex === -1) return { status: "gagal", message: "Guru tidak ditemukan untuk diedit." };
     } else {
-       // Mode Add: Cek duplikasi email
        for (let i = 1; i < data.length; i++) {
          if (data[i][0] === guruData.email) return { status: "gagal", message: "Email guru sudah terdaftar." };
        }
@@ -4146,14 +4457,15 @@ function saveGuru(token, guruData) {
       if (!guruData.password) return { status: "gagal", message: "Password wajib untuk guru baru." };
       const newSalt = generateSalt();
       const newHash = hashPassword(guruData.password, newSalt);
-      sheet.appendRow([guruData.email, guruData.nama, newHash, newSalt, mapelIdsString]);
+      // --- PERUBAHAN DISINI ---
+      sheet.appendRow([guruData.email, guruData.nama, newHash, newSalt, mapelKelasJSON]);
     } else {
       // Mode Edit
-      sheet.getRange(rowIndex, 1).setValue(guruData.email); // Update email (jika berubah)
-      sheet.getRange(rowIndex, 2).setValue(guruData.nama);  // Update nama
-      sheet.getRange(rowIndex, 5).setValue(mapelIdsString); // Update mapel
+      sheet.getRange(rowIndex, 1).setValue(guruData.email);
+      sheet.getRange(rowIndex, 2).setValue(guruData.nama);
+      // --- PERUBAHAN DISINI ---
+      sheet.getRange(rowIndex, 5).setValue(mapelKelasJSON); // Update mapel
 
-      // Update password hanya jika diisi
       if (guruData.password) {
         const newSalt = generateSalt();
         const newHash = hashPassword(guruData.password, newSalt);
@@ -4372,5 +4684,146 @@ function prosesImportExcelGuru(token, fileData) {
     if (tempExcelFileId) { try { DriveApp.getFileById(tempExcelFileId).setTrashed(true); } catch (err) {} }
     if (tempConvertedSheetId) { try { DriveApp.getFileById(tempConvertedSheetId).setTrashed(true); } catch (err) {} }
     return { status: "gagal", message: "Terjadi error: " + e.message };
+  }
+}
+
+/**
+ * Mengambil pengaturan batas waktu input guru dari sheet Pengaturan.
+ */
+function getPengaturanGuru(token) {
+  try {
+    const { spreadsheetID } = validateAdminSession(token);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getPengaturanSheet(ss);
+    const data = sheet.getRange('A1:B' + sheet.getLastRow()).getValues();
+    
+    // --- TAMBAHAN BARU ---
+    // 1. Dapatkan timezone dari spreadsheet, bukan dari script
+    const spreadsheetTimeZone = ss.getSpreadsheetTimeZone(); 
+    // 2. Tentukan format yang TEPAT untuk <input type="datetime-local">
+    const formatString = "yyyy-MM-dd'T'HH:mm";
+    // --- AKHIR TAMBAHAN ---
+    
+    let pengaturan = {
+      isAktif: false,
+      tanggalMulai: '',
+      tanggalTutup: ''
+    };
+
+    for (let i = 0; i < data.length; i++) {
+      if (data[i][0] === 'Guru_Input_Aktif') {
+        pengaturan.isAktif = data[i][1] === true;
+      
+      } else if (data[i][0] === 'Guru_Input_Mulai') {
+        
+        // --- PERBAIKAN DI SINI ---
+        // Menggunakan Utilities.formatDate alih-alih .toISOString()
+        if (data[i][1] instanceof Date) {
+          pengaturan.tanggalMulai = Utilities.formatDate(data[i][1], spreadsheetTimeZone, formatString);
+        } else {
+          pengaturan.tanggalMulai = '';
+        }
+        // --- AKHIR PERBAIKAN ---
+
+      } else if (data[i][0] === 'Guru_Input_Tutup') {
+        
+        // --- PERBAIKAN DI SINI ---
+        // Menggunakan Utilities.formatDate alih-alih .toISOString()
+        if (data[i][1] instanceof Date) {
+          pengaturan.tanggalTutup = Utilities.formatDate(data[i][1], spreadsheetTimeZone, formatString);
+        } else {
+          pengaturan.tanggalTutup = '';
+        }
+        // --- AKHIR PERBAIKAN ---
+      }
+    }
+    
+    return { status: "sukses", pengaturan: pengaturan };
+
+  } catch (e) {
+    return { status: "gagal", message: e.message };
+  }
+}
+
+/**
+ * Menyimpan pengaturan batas waktu input guru.
+ */
+function savePengaturanGuru(token, pengaturan) {
+  try {
+    const { spreadsheetID } = validateAdminSession(token);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    const sheet = getPengaturanSheet(ss);
+    const data = sheet.getRange('A1:B' + sheet.getLastRow()).getValues();
+
+    const settingsMap = new Map(data.map(row => [row[0], row[1]]));
+    settingsMap.set('Guru_Input_Aktif', pengaturan.isAktif);
+    settingsMap.set('Guru_Input_Mulai', pengaturan.isAktif && pengaturan.tanggalMulai ? new Date(pengaturan.tanggalMulai) : null);
+    settingsMap.set('Guru_Input_Tutup', pengaturan.isAktif && pengaturan.tanggalTutup ? new Date(pengaturan.tanggalTutup) : null);
+
+    // Hapus baris lama
+    sheet.getRange('A1:B' + sheet.getLastRow()).clearContent();
+    
+    // Tulis ulang semua
+    const newData = Array.from(settingsMap.entries());
+    sheet.getRange(1, 1, newData.length, 2).setValues(newData);
+
+    return { status: "sukses", message: "Pengaturan waktu input guru berhasil disimpan." };
+
+  } catch (e) {
+    return { status: "gagal", message: e.message };
+  }
+}
+
+/**
+ * Memeriksa apakah input guru saat ini diizinkan berdasarkan pengaturan.
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss - Spreadsheet yang aktif.
+ * @returns {Object} { diizinkan: boolean, pesan: string }
+ */
+function cekWaktuInputGuru(ss) {
+  try {
+    const sheet = getPengaturanSheet(ss);
+    const data = sheet.getRange('A1:B' + sheet.getLastRow()).getValues();
+    
+    let isAktif = false;
+    let tanggalMulai = null;
+    let tanggalTutup = null;
+
+    for (let i = 0; i < data.length; i++) {
+      if (data[i][0] === 'Guru_Input_Aktif') {
+        isAktif = data[i][1] === true;
+      } else if (data[i][0] === 'Guru_Input_Mulai') {
+        if (data[i][1] instanceof Date) tanggalMulai = data[i][1];
+      } else if (data[i][0] === 'Guru_Input_Tutup') {
+        if (data[i][1] instanceof Date) tanggalTutup = data[i][1];
+      }
+    }
+    
+    // --- PERUBAHAN UTAMA DI SINI ---
+    // Jika tidak aktif, langsung blokir.
+    if (!isAktif) {
+      return { diizinkan: false, pesan: "Admin belum mengaktifkan izin input nilai untuk guru." };
+    }
+    // --- AKHIR PERUBAHAN ---
+
+    const now = new Date();
+
+    // Cek tanggal hanya jika 'isAktif' adalah true
+    if (tanggalMulai && now < tanggalMulai) {
+      const tglMulaiStr = Utilities.formatDate(tanggalMulai, Session.getScriptTimeZone(), "dd MMM yyyy 'pukul' HH:mm");
+      return { diizinkan: false, pesan: `Input nilai belum dibuka. Akan dibuka pada ${tglMulaiStr}.` };
+    }
+    
+    if (tanggalTutup && now > tanggalTutup) {
+      const tglTutupStr = Utilities.formatDate(tanggalTutup, Session.getScriptTimeZone(), "dd MMM yyyy 'pukul' HH:mm");
+      return { diizinkan: false, pesan: `Waktu input nilai sudah ditutup sejak ${tglTutupStr}.` };
+    }
+
+    // Jika aktif, dan lolos cek tanggal (atau tanggal kosong)
+    return { diizinkan: true, pesan: "Input diizinkan." };
+
+  } catch (e) {
+    Logger.log("Error cekWaktuInputGuru: " + e.message);
+    // Gagal-safe: Asumsikan TIDAK diizinkan jika terjadi error
+    return { diizinkan: false, pesan: "Gagal memvalidasi izin input. Hubungi Admin." };
   }
 }
