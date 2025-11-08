@@ -660,9 +660,47 @@
 
         <p>Tambahkan guru dan tentukan mata pelajaran yang mereka ampu agar mereka dapat login dan menginput nilai.</p>
 
+        <hr class="dashboard-divider">
         <div class="siswa-table-container" id="guru-table-container">
           <p>Memuat data guru...</p>
         </div>
+
+        <hr class="dashboard-divider">
+        <h3 class="form-section-header">Pengaturan Waktu Input Guru</h3>
+        
+        <form id="form-pengaturan-guru" onsubmit="return false;">
+            
+            <p>Atur izin bagi guru untuk menginput/mengedit nilai ujian (UM & UP). Jika nonaktif, guru <b>tidak bisa</b> menginput nilai sama sekali.</p>
+            
+            <div class="form-group-toggle">
+                <label for="toggle-waktu-input">Aktifkan Izin Input Nilai Guru</label>
+                <label class="switch">
+                    <input type="checkbox" id="toggle-waktu-input">
+                    <span class="slider round"></span>
+                </label>
+            </div>
+            
+            <div id="container-tanggal-input-guru" style="display: none;">
+                <p class="helper-text" style="text-align: center; margin-bottom: 15px; font-size: 13px;">
+                  (Opsional) Biarkan tanggal kosong agar guru bisa menginput nilai tanpa batas waktu, selama izin di atas aktif.
+                </p>
+                <div class="form-group">
+                    <label for="guru-tanggal-mulai">Tanggal Mulai Input (Opsional)</label>
+                    <input type="datetime-local" id="guru-tanggal-mulai">
+                </div>
+                <div class="form-group">
+                    <label for="guru-tanggal-tutup">Tanggal Selesai Input (Opsional)</label>
+                    <input type="datetime-local" id="guru-tanggal-tutup">
+                </div>
+            </div>
+
+            <p id="pengaturan-guru-message" class="message" style="display: none;"></p>
+            
+            <div class="form-actions">
+                <button type="button" id="btn-simpan-pengaturan-guru" disabled><i class="fas fa-save"></i>Simpan Pengaturan</button>
+            </div>
+        </form>
+
       </div>
     </div>
     
@@ -770,7 +808,7 @@
         </div>
         <div class="modal-body">
           <form id="form-guru" onsubmit="return false;">
-            <input type="hidden" id="modal-guru-mode" value="add">
+            <input type="hidden" id="modal-guru-mode" value="add" data-is-single-class-mode="true"> 
             <input type="hidden" id="modal-guru-original-email" value="">
 
             <div class="form-group">
@@ -793,20 +831,28 @@
             </div>
 
             <div class="form-group">
-              <label for="modal-guru-mapel-search">Mata Pelajaran yang Diampu:</label>
+              <label>Mata Pelajaran yang Diampu:</label>
               
-              <div class="mapel-search-wrapper">
-                <input type="text" id="modal-guru-mapel-search" placeholder="Ketik Kode atau Nama Mapel...">
-                <div id="modal-guru-mapel-suggestions" class="mapel-suggestions-container">
+              <div id="modal-guru-ui-single-class">
+                  <div class="mapel-search-wrapper">
+                    <input type="text" id="modal-guru-mapel-search" placeholder="Ketik Kode atau Nama Mapel...">
+                    <div id="modal-guru-mapel-suggestions" class="mapel-suggestions-container"></div>
                   </div>
+                  <small class="helper-text">Klik pada hasil pencarian untuk menambahkan mapel.</small>
+                  <div id="modal-guru-mapel-selected" class="mapel-selected-container"></div>
               </div>
-              
-              <small class="helper-text">Klik pada hasil pencarian untuk menambahkan mapel.</small>
-              
-              <div id="modal-guru-mapel-selected" class="mapel-selected-container">
-                </div>
-            </div>
 
+              <div id="modal-guru-ui-multi-class" style="display: none;">
+                  <div class="mapel-search-wrapper">
+                      <input type="text" id="modal-guru-mapel-kelas-search" placeholder="Ketik Kode atau Nama Mapel...">
+                      <div id="modal-guru-mapel-kelas-suggestions" class="mapel-suggestions-container"></div>
+                  </div>
+                  <small class="helper-text">Klik hasil pencarian untuk menambahkan mapel ke daftar di bawah.</small>
+                  
+                  <div id="modal-guru-mapel-kelas-list" class="mapel-kelas-list-container">
+                      </div>
+              </div>
+            </div>
             <p id="modal-guru-error" class="message error"></p>
           </form>
         </div>
