@@ -169,7 +169,9 @@ function kirimEmailVerifikasi(email, namaSekolah, token) {
   }
 }
 
-function buatDatabaseSekolahBaru(namaSekolah, jenjang, email, password, masterSS) {
+// --- PERBAIKAN PADA TANDA TANGAN FUNGSI ---
+function buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, password, masterSS) {
+// --- AKHIR PERBAIKAN ---
   let newSSID = null; 
   try {
     let targetFolder;
@@ -256,12 +258,17 @@ function buatDatabaseSekolahBaru(namaSekolah, jenjang, email, password, masterSS
       jenjangPilihanDefault = 'MA';
     }
     
+    // --- PERBAIKAN DI SINI ---
+    // Menggunakan variabel 'npsn' yang diterima fungsi
     sheetDataSekolah.appendRow([
       jenjangPilihanDefault, 
-      '', '', '', '', 
+      npsn, // <-- PERBAIKAN
+      '', '', '', 
       '', 'Kabupaten', '', '', 'Kelurahan', 
       '', '', '', '', '', ''
     ]);
+    // --- AKHIR PERBAIKAN ---
+
     sheetDataSekolah.getRange('A2:P2').setNumberFormat('@');
 
     // --- PERUBAHAN DI SINI ---
@@ -340,7 +347,10 @@ function prosesVerifikasiToken(token) {
         }
 
         try {
-          const newSSID = buatDatabaseSekolahBaru(namaSekolah, jenjang, email, "dummy_password_not_used", masterSS);
+          // --- PERBAIKAN DI SINI ---
+          // Menambahkan 'npsn' sebagai parameter ketiga
+          const newSSID = buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, "dummy_password_not_used", masterSS);
+          // --- AKHIR PERBAIKAN ---
           
           const newSekolahID = "SKL-" + (sheetSekolah.getLastRow());
           sheetSekolah.appendRow([
@@ -832,7 +842,12 @@ function superadminSaveSekolah(token, data) {
       if (!password) {
         throw new Error("Password wajib diisi untuk akun baru.");
       }
-      const newSSID = buatDatabaseSekolahBaru(nama, jenjang, email, password, masterSS);
+      
+      // --- PERBAIKAN DI SINI ---
+      // Menambahkan '' sebagai parameter 'npsn'
+      const newSSID = buatDatabaseSekolahBaru(nama, jenjang, '', email, password, masterSS);
+      // --- AKHIR PERBAIKAN ---
+
       const newSalt = generateSalt();
       const newHash = hashPassword(password, newSalt);
       const newSekolahID = "SKL-" + (sheetSekolah.getLastRow());
