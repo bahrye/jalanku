@@ -3555,4 +3555,181 @@
     text-decoration: underline;
   }
 
+  /* --- ============================================= --- */
+  /* ---      GAYA BARU UNTUK TOGGLE SWITCH          --- */
+  /* --- ============================================= --- */
+
+  .form-group-toggle {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: var(--bg-light);
+    padding: 15px 20px;
+    border-radius: 12px;
+    margin: 20px 0;
+    border: 1px solid var(--border-color);
+  }
+
+  .form-group-toggle label {
+    margin-bottom: 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-dark);
+  }
+
+  /* The switch - a checkbox hidden with CSS */
+  .switch {
+    position: relative;
+    display: inline-block;
+    width: 60px;
+    height: 34px;
+    flex-shrink: 0;
+  }
+
+  .switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  /* The slider */
+  .slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    -webkit-transition: .4s;
+    transition: .4s;
+  }
+
+  .slider:before {
+    position: absolute;
+    content: "";
+    height: 26px;
+    width: 26px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    -webkit-transition: .4s;
+    transition: .4s;
+  }
+
+  input:checked + .slider {
+    background-color: var(--success-color); /* Warna hijau saat aktif */
+  }
+
+  input:focus + .slider {
+    box-shadow: 0 0 1px var(--success-color);
+  }
+
+  input:checked + .slider:before {
+    -webkit-transform: translateX(26px);
+    -ms-transform: translateX(26px);
+    transform: translateX(26px);
+  }
+
+  /* Rounded sliders */
+  .slider.round {
+    border-radius: 34px;
+  }
+
+  .slider.round:before {
+    border-radius: 50%;
+  }
+
+  #btn-simpan-pengaturan-guru {
+      background-color: var(--success-color);
+  }
+  #btn-simpan-pengaturan-guru:hover {
+      background-color: #157347;
+  }
+  #btn-simpan-pengaturan-guru:disabled {
+    background-color: var(--secondary-color) !important;
+    opacity: 0.65;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  /* --- ============================================= --- */
+  /* ---   GAYA BARU: MODAL GURU MULTI-KELAS         --- */
+  /* --- ============================================= --- */
+
+  .mapel-kelas-list-container {
+    margin-top: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+    background-color: var(--bg-light);
+  }
+
+  .mapel-kelas-row {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    gap: 10px;
+    border-bottom: 1px solid var(--border-color);
+  }
+  .mapel-kelas-row:last-child {
+    border-bottom: none;
+  }
+
+  .mapel-kelas-nama {
+    flex-grow: 1;
+    font-size: 14px;
+    font-weight: 500;
+    padding-left: 5px;
+  }
+
+  .mapel-kelas-select-wrapper {
+    flex-shrink: 0;
+    width: 120px;
+  }
+
+  /* Ini adalah select 'multiple' yang kita buat terlihat seperti dropdown biasa */
+  .mapel-kelas-select {
+    width: 100% !important;
+    font-size: 13px !important;
+    padding: 8px !important;
+    background-color: var(--bg-white) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 6px !important;
+    height: 100px !important; /* Tampilkan 3-4 item */
+  }
+
+  .mapel-kelas-select:focus {
+    border-color: var(--primary-color) !important;
+    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25) !important;
+    outline: none;
+  }
+
+  .mapel-kelas-remove {
+    width: 30px !important;
+    height: 30px !important;
+    padding: 0 !important;
+    font-size: 16px !important;
+    flex-shrink: 0;
+    background-color: var(--danger-color) !important;
+    color: white !important;
+    border-radius: 50% !important;
+  }
+  .mapel-kelas-remove:hover {
+    background-color: #b02a37 !important;
+  }
+
+  /* --- ============================================= --- */
+  /* ---   GAYA BARU: INPUT NILAI GURU (DISABLED)    --- */
+  /* --- ============================================= --- */
+
+  .input-nilai:disabled {
+    background-color: var(--bg-light);
+    color: var(--text-light);
+    cursor: not-allowed;
+    opacity: 0.7;
+    border-style: dashed;
+  }
+
 </style>
