@@ -110,6 +110,7 @@
   let currentUserRole = ''
   let guruHasPraktek = false;
   let guruHasMadrasah = false;
+  let globalAppUrl = '';
 
   // --- TAMBAHAN BARU ---
   let inactivityTimer = null;
@@ -567,7 +568,7 @@
       'halaman-login', 
       'halaman-registrasi',
       'halaman-login-siswa',
-      'halaman-login-guru' // <-- TAMBAHKAN BARIS INI
+      'halaman-login-guru' // <-- Pastikan ini ada
     ];
 
     allPages.forEach(id => {
@@ -603,31 +604,32 @@
     if (targetElement) {
         if (authSubPages.includes(idHalaman)) {
             document.getElementById('auth-container').style.display = 'block';
+            
+            // Sembunyikan semua sub-halaman dulu
             authSubPages.forEach(subId => {
                 const subEl = document.getElementById(subId);
                 if (subEl) subEl.style.display = 'none';
             });
+
+            // Tampilkan target
             targetElement.style.display = 'block';
             localStorage.removeItem(LAST_PAGE_KEY);
 
-            // --- TAMBAHAN BARU ---
+            // --- PERBAIKAN LOGIKA DI SINI ---
+            // Logika ini HANYA untuk mengubah teks tombol "Login Admin"
+            // JANGAN atur tab aktif di sini. activateAuthTab() akan menanganinya.
             const adminTab = document.getElementById('tab-btn-admin');
             if (adminTab) {
               if (idHalaman === 'halaman-registrasi') {
                 adminTab.innerText = 'Buat Akun';
-                // Paksa aktifkan tab ini dan nonaktifkan yang lain
-                document.getElementById('tab-btn-guru').classList.remove('active');
-                document.getElementById('tab-btn-siswa').classList.remove('active');
-                adminTab.classList.add('active');
+                // Hapus logika .classList.add('active') dari sini
               } else if (idHalaman === 'halaman-login') {
                 adminTab.innerText = 'Login Admin';
-                // Paksa aktifkan tab ini dan nonaktifkan yang lain
-                document.getElementById('tab-btn-guru').classList.remove('active');
-                document.getElementById('tab-btn-siswa').classList.remove('active');
-                adminTab.classList.add('active');
+                // Hapus logika .classList.add('active') dari sini
               }
             }
-            // --- AKHIR TAMBAHAN ---
+            // --- AKHIR PERBAIKAN ---
+
         } else {
             targetElement.style.display = 'block';
             localStorage.setItem(LAST_PAGE_KEY, idHalaman);
@@ -962,6 +964,15 @@
     document.getElementById('btn-tutup-modal-guru').addEventListener('click', tutupModalGuru);
     document.getElementById('btn-batal-modal-guru').addEventListener('click', tutupModalGuru);
     document.getElementById('btn-simpan-guru').addEventListener('click', simpanGuru);
+
+    // --- TAMBAHAN BARU: Listener untuk Cetak Kartu ---
+    document.getElementById('btn-cetak-kartu-guru').addEventListener('click', konfirmasiCetakKartu);
+    document.getElementById('btn-tutup-halaman-cetak').addEventListener('click', () => {
+      document.getElementById('halaman-cetak-kartu').style.display = 'none';
+      document.getElementById('kartu-container').innerHTML = ''; // Kosongkan kartu
+    });
+    document.getElementById('btn-print-kartu').addEventListener('click', () => window.print());
+    // --- AKHIR TAMBAHAN ---
     
     document.getElementById('toggle-guru-password').addEventListener('click', function() {
       const passwordInput = document.getElementById('modal-guru-password');
@@ -2095,6 +2106,7 @@
     window.addEventListener('touchstart', resetInactivityTimer);
     window.addEventListener('scroll', resetInactivityTimer);
 
+    // --- LOGIKA PEMUATAN AWAL (ROUTING) YANG SUDAH DIPERBAIKI ---
     const token = localStorage.getItem('sessionToken');
 
     if (token) {
@@ -2103,12 +2115,28 @@
       
       google.script.run
         .withSuccessHandler(onTokenCheck) 
-        .withFailureHandler(onTokenCheckFailed) // <-- PERUBAHAN KRUSIAL
+        .withFailureHandler(onTokenCheckFailed)
         .checkToken(token);
         
     } else {
-      tampilHalaman('halaman-login');
+      // TIDAK ADA TOKEN (Pengguna belum login)
+            
+      // Periksa apakah URL memiliki hash
+      if (window.location.hash === '#login-guru') {
+        // Jika ya, langsung tampilkan halaman login guru dan aktifkan tab-nya
+        tampilHalaman('halaman-login-guru');
+        activateAuthTab('guru');
+      } else if (window.location.hash === '#login-siswa') {
+        // Bonus: tambahkan juga untuk siswa jika diperlukan
+        tampilHalaman('halaman-login-siswa');
+        activateAuthTab('siswa');
+      } else {
+        // Jika tidak ada hash, tampilkan halaman login admin default
+        tampilHalaman('halaman-login');
+        activateAuthTab('admin'); // Aktifkan tab admin secara eksplisit
+      }
     }
+    // --- AKHIR LOGIKA PEMUATAN AWAL ---
   });
 
   function activateRaporTab(tabName) {
@@ -2151,6 +2179,7 @@
     resetInactivityTimer();
     const lastPageId = localStorage.getItem(LAST_PAGE_KEY);
 
+    globalAppUrl = response.appUrl || '';
     updateRecalculateButtonState();
 
     isImpersonatingCache = false;
@@ -2202,6 +2231,8 @@
     if (response.status === "sukses") {
       localStorage.setItem('sessionToken', response.token);
       resetInactivityTimer();
+
+      globalAppUrl = response.appUrl || '';
 
       isImpersonatingCache = false;
       document.getElementById('btn-kembali-ke-superadmin').style.display = 'none';
@@ -7415,6 +7446,131 @@ function populateSiswaFilters() {
 
     document.getElementById('file-upload-guru').value = null;
     document.getElementById('btn-proses-import-guru').disabled = true;
+  }
+
+  /**
+   * Menampilkan modal konfirmasi SEBELUM me-reset semua password.
+   */
+  function konfirmasiCetakKartu() {
+    const title = "Konfirmasi Cetak Kartu & Reset Password";
+    const message = `
+      Anda akan membuat kartu login untuk <strong>semua guru</strong>.
+      <br><br>
+      <strong style="color: var(--danger-color); font-size: 16px;">PERINGATAN BESAR:</strong>
+      <br>
+      Tindakan ini akan <strong>MENGGANTI (MERESET)</strong> password SEMUA guru dengan password acak baru. Password lama mereka tidak akan berlaku lagi.
+      <br><br>
+      Yakin ingin melanjutkan?
+    `;
+    showConfirmationModal(title, message, jalankanCetakKartu, 'danger');
+  }
+
+  /**
+   * Memanggil server untuk me-reset password dan mendapatkan data kartu.
+   */
+  function jalankanCetakKartu() {
+    setLoading(true, 'Membuat password baru dan data kartu...', true, true);
+    google.script.run
+      .withSuccessHandler(onCetakKartuSuccess)
+      .withFailureHandler(onGagal)
+      .generateGuruLoginCards(getToken());
+  }
+
+  /**
+   * Dipanggil setelah server berhasil membuat data kartu.
+   * VERSI REVISI: Ukuran diperbesar (160px) dan Level Koreksi (H)
+   */
+  function onCetakKartuSuccess(response) {
+    setLoading(false);
+    if (response.status !== 'sukses' || !response.cardData) {
+      onGagal({ message: response.message || "Gagal mengambil data kartu." });
+      return;
+    }
+    
+    const websiteUrl = globalAppUrl + '#login-guru';
+    const npsn = response.npsn || 'N/A'; 
+
+    if (!globalAppUrl || websiteUrl.length < 20) { 
+      console.error("Gagal mendapatkan URL website yang valid. URL:", websiteUrl);
+      onGagal({ message: "Gagal mendapatkan URL aplikasi. Tidak dapat membuat QR code." });
+      return;
+    }
+
+    const cardData = response.cardData;
+    const container = document.getElementById('kartu-container');
+    const page = document.getElementById('halaman-cetak-kartu');
+    container.innerHTML = ''; 
+
+    if (cardData.length === 0) {
+      container.innerHTML = '<p>Tidak ada data guru untuk dicetak.</p>';
+      page.style.display = 'block';
+      return;
+    }
+
+    // 1. Buat HTML untuk semua kartu
+    let cardsHtml = '';
+    for (let i = 0; i < cardData.length; i++) {
+      const guru = cardData[i];
+      cardsHtml += `
+        <div class="login-card">
+          <h3>Kartu Login Guru</h3>
+          <a class"login-card-qr" 
+             id="qr-guru-${i}" 
+             href="${websiteUrl}" 
+             target="_blank" 
+             title="Pindai kode ini, atau klik untuk membuka link">
+          </a>
+          <div class="login-card-info">
+            <strong>${guru.nama}</strong><br>
+            NPSN: <strong>${npsn}</strong><br>
+            Email: <strong>${guru.email}</strong><br>
+            Password: <strong>${guru.newPassword}</strong>
+          </div>
+        </div>
+      `;
+    }
+    container.innerHTML = cardsHtml;
+    
+    // 2. Tampilkan halaman cetak
+    page.style.display = 'block';
+
+    // 3. Generate QR Code
+    setTimeout(() => {
+      try {
+        for (let i = 0; i < cardData.length; i++) {
+          const qrElement = document.getElementById(`qr-guru-${i}`); 
+          if (qrElement) {
+            qrElement.innerHTML = ''; 
+            new QRCode(qrElement, {
+              text: websiteUrl,
+              
+              // --- PERUBAHAN DI SINI ---
+              width: 160, 
+              height: 160,
+              // --- AKHIR PERUBAHAN ---
+
+              colorDark : "#000000",
+              colorLight : "#ffffff",
+
+              // --- PERUBAHAN DI SINI (Kembali ke 'H') ---
+              correctLevel : QRCode.CorrectLevel.H 
+              // --- AKHIR PERUBAHAN ---
+            });
+          } else {
+            console.warn(`Elemen qr-guru-${i} tidak ditemukan.`);
+          }
+        }
+      } catch (e) {
+        console.error("Gagal membuat QR Code:", e);
+        if (typeof QRCode === 'undefined') {
+          showToast("Gagal memuat library QR Code. Periksa koneksi internet.", 'gagal');
+        } else {
+          showToast("Gagal membuat QR Code, terjadi error.", 'gagal');
+        }
+      }
+    }, 50); 
+    
+    showToast(`Berhasil membuat ${cardData.length} kartu. Semua password guru telah direset.`, 'sukses');
   }
 
 </script>
