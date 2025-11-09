@@ -94,11 +94,18 @@ function doGet(e) {
     // Proses token dan dapatkan pesan HTML
     const message = prosesVerifikasiToken(token);
     
-    // Tampilkan halaman 'verifikasi.html' dan ganti kontennya dengan pesan hasil
-    return HtmlService.createTemplateFromFile('verifikasi')
-      .evaluate()
-      .setTitle('Verifikasi Akun')
-      .setContent(`<div>${message}</div>`); // Mengganti konten <body>
+    // --- PERBAIKAN DI SINI ---
+    // 1. Buat template dari file 'verifikasi.html'
+    const template = HtmlService.createTemplateFromFile('verifikasi');
+    
+    // 2. Masukkan pesan (sukses/gagal) ke dalam variabel template 'verificationMessage'
+    //    Ini akan mengisi placeholder <?!= verificationMessage; ?> di file verifikasi.html
+    template.verificationMessage = `<div>${message}</div>`;
+    
+    // 3. Evaluasi template SETELAH variabelnya diisi
+    return template.evaluate()
+      .setTitle('Verifikasi Akun');
+    // --- AKHIR PERBAIKAN ---
   }
   
   // Jika tidak ada parameter 'v', jalankan aplikasi utama seperti biasa
@@ -568,8 +575,8 @@ function clearSiswaCache(sekolahID, spreadsheetID) { // <--- Terima spreadsheetI
     CacheService.getScriptCache().remove(cacheKey);
     
     // --- PERBAIKAN: Teruskan spreadsheetID ---
-    clearNilaiUjianCache(sekolahID, spreadsheetID);
-    clearNilaiRaporCache(sekolahID, spreadsheetID);
+    // clearNilaiUjianCache(sekolahID, spreadsheetID);
+    // clearNilaiRaporCache(sekolahID, spreadsheetID);
     // --- AKHIR PERBAIKAN ---
 
     clearLockedKelasCache(sekolahID); // Ini tidak perlu spreadsheetID
@@ -587,8 +594,8 @@ function clearMapelCache(sekolahID) {
     CacheService.getScriptCache().remove(cacheKey);
     // --- AKHIR PERBAIKAN ---
     
-    clearNilaiUjianCache(sekolahID);
-    clearNilaiRaporCache(sekolahID);
+    // clearNilaiUjianCache(sekolahID);
+    // clearNilaiRaporCache(sekolahID);
   } catch (e) {
   }
 }
