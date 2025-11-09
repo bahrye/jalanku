@@ -556,6 +556,29 @@
   }
 
   function tampilHalaman(idHalaman) {
+    /* --- =================================== --- */
+    /* ---      TAMBAHAN BARU: Hentikan Video    --- */
+    /* --- =GET-VIDEO-STATE-FAILED================================== --- */
+    // Cek apakah player video donasi (ytPlayerDonasi) ada
+    // dan memiliki fungsi stopVideo.
+    if (ytPlayerDonasi && typeof ytPlayerDonasi.stopVideo === 'function') {
+      
+      // Jika halaman yang dituju BUKAN halaman donasi,
+      // panggil .stopVideo() untuk menghentikannya.
+      if (idHalaman !== 'halaman-donasi') {
+        ytPlayerDonasi.stopVideo();
+        
+        // Pastikan juga navigasi slider muncul kembali
+        const sliderEl = document.querySelector('.donasi-slider');
+        if (sliderEl) {
+            sliderEl.classList.remove('video-is-playing');
+        }
+      }
+    }
+    /* --- =================================== --- */
+    /* ---      AKHIR TAMBAHAN BARU            --- */
+    /* --- =================================== --- */
+
     const allPages = [
       'auth-container', 'halaman-utama', 'halaman-mapel',
       'halaman-data-sekolah', 'halaman-bobot', 'halaman-kelas', 'halaman-siswa',
@@ -842,6 +865,49 @@
     // --- AKHIR TAMBAHAN ---
 
     document.getElementById('btn-login').addEventListener('click', jalankanLogin);
+
+    /* --- =================================== --- */
+    /* ---      MODIFIKASI: Jebak Tombol Back --- */
+    /* --- =================================== --- */
+    window.addEventListener('popstate', function(event) {
+      // Cek apakah kita masih di dalam aplikasi (token masih ada)
+      const token = localStorage.getItem('sessionToken');
+      
+      if (token) {
+        // Pengguna menekan "back".
+        
+        // 1. Dorong kembali state "jebakan" kita
+        //    untuk "mengunci" pengguna di aplikasi.
+        history.pushState(null, "", location.href);
+        
+        // 2. [TAMBAHAN BARU] Atasi "halaman kosong" di mobile
+        //    dengan memuat ulang UI halaman saat ini.
+        const currentPageId = localStorage.getItem(LAST_PAGE_KEY);
+        
+        if (currentPageId && currentPageId !== 'halaman-login' && currentPageId !== 'halaman-registrasi') {
+          // Panggil ulang fungsi navigasi yang sesuai untuk
+          // me-render ulang halaman yang sedang dilihat.
+          
+          // Note: Kita tidak bisa panggil bukaHalamanTersimpan() karena
+          // itu akan memanggil setLoading(true), yang tidak kita inginkan di sini.
+          // Kita panggil tampilHalaman() secara langsung.
+          tampilHalaman(currentPageId);
+          
+        } else {
+          // Jika tidak ada halaman tersimpan, pastikan kita ada di dashboard
+          // (atau di halaman superadmin jika itu perannya)
+          if (currentUserRole === 'superadmin') {
+             tampilHalaman('halaman-superadmin');
+          } else if (currentUserRole === 'admin' || currentUserRole === 'guru') {
+             tampilHalaman('halaman-utama');
+          }
+        }
+      }
+      // Jika token tidak ada (sudah logout), biarkan "back" berfungsi normal.
+    });
+    /* --- =================================== --- */
+    /* ---      AKHIR MODIFIKASI            --- */
+    /* --- =================================== --- */
 
     document.getElementById('btn-registrasi').addEventListener('click', () => {
       const btnReg = document.getElementById('btn-registrasi');
@@ -2296,6 +2362,13 @@
   function onTokenCheck(response) {
     setLoading(false);
     resetInactivityTimer();
+
+    // --- TAMBAHAN BARU: Mendorong state "jebakan" ---
+    // Ini menambahkan entri history baru sehingga "back"
+    // tidak langsung keluar dari aplikasi.
+    history.pushState(null, "", location.href);
+    // --- AKHIR TAMBAHAN BARU ---
+
     const lastPageId = localStorage.getItem(LAST_PAGE_KEY);
 
     globalAppUrl = response.appUrl || '';
@@ -2355,6 +2428,10 @@
     if (response.status === "sukses") {
       localStorage.setItem('sessionToken', response.token);
       resetInactivityTimer();
+      
+      // --- TAMBAHAN BARU: Mendorong state "jebakan" ---
+      history.pushState(null, "", location.href);
+      // --- AKHIR TAMBAHAN BARU ---
 
       globalAppUrl = response.appUrl || '';
 
@@ -8280,18 +8357,105 @@ function populateSiswaFilters() {
     on: {
       slideChange: function () {
         try {
-          // Cari semua iframe di dalam slider
+          // Cari semua iframe di dalam slider (LOGIKA ASLI)
           var iframes = this.el.querySelectorAll('iframe');
           iframes.forEach(function(iframe) {
             // Reset 'src'-nya untuk menghentikan video
             var iframeSrc = iframe.src;
             iframe.src = iframeSrc; 
           });
+
+          /* --- =================================== --- */
+          /* ---      TAMBAHAN BARU DI SINI        --- */
+          /* --- =================================== --- */
+          // Hentikan juga player API jika ada
+          if (ytPlayerDonasi && typeof ytPlayerDonasi.stopVideo === 'function') {
+            ytPlayerDonasi.stopVideo();
+          }
+          // Pastikan nav tampil lagi saat slide diganti
+          const sliderEl = document.querySelector('.donasi-slider');
+          if (sliderEl) {
+              sliderEl.classList.remove('video-is-playing');
+          }
+          /* --- =================================== --- */
+          /* ---      AKHIR TAMBAHAN BARU          --- */
+          /* --- =================================== --- */
+
         } catch (e) {
           console.warn("Gagal menghentikan video:", e);
         }
       },
     }
   });
+
+  /* --- ============================================= --- */
+  /* ---      KODE BARU: KONTROL VIDEO YOUTUBE         --- */
+  /* --- ============================================= --- */
+
+  // 1. Variabel global untuk player
+  let ytPlayerDonasi = null;
+
+  /**
+   * 2. Fungsi ini dipanggil otomatis oleh API YouTube (dari index.html)
+   * saat API siap.
+   */
+  function onYouTubeIframeAPIReady() {
+    const playerElement = document.getElementById('youtube-player-donasi');
+    if (playerElement) {
+      try {
+        ytPlayerDonasi = new YT.Player('youtube-player-donasi', {
+          events: {
+            'onReady': onPlayerReady,
+            'onStateChange': onPlayerStateChange
+          }
+        });
+      } catch(e) {
+        console.error("Gagal menginisialisasi YouTube Player API:", e);
+      }
+    }
+  }
+
+  /**
+   * 3. Dipanggil saat player siap.
+   */
+  function onPlayerReady(event) {
+    // Player siap. Kita tambahkan listener untuk menampilkan kembali nav
+    const sliderEl = document.querySelector('.donasi-slider');
+    if (sliderEl) {
+      // Listener untuk "kursor diarahkan ke video/slider"
+      sliderEl.addEventListener('mouseenter', showSliderNav);
+      // Listener untuk "halaman diklik"
+      document.addEventListener('click', showSliderNav);
+    }
+  }
+
+  /**
+   * 4. Fungsi untuk menangani perubahan status player (Play, Pause, dll.)
+   */
+  function onPlayerStateChange(event) {
+    const sliderEl = document.querySelector('.donasi-slider');
+    if (!sliderEl) return;
+
+    if (event.data == YT.PlayerState.PLAYING) {
+      // Saat video diputar: Sembunyikan navigasi
+      sliderEl.classList.add('video-is-playing');
+    } else {
+      // Saat video dijeda, selesai, atau buffering: Tampilkan navigasi
+      sliderEl.classList.remove('video-is-playing');
+    }
+  }
+
+  /**
+   * 5. Fungsi helper untuk menampilkan navigasi (dipanggil oleh listener)
+   */
+  function showSliderNav() {
+    const sliderEl = document.querySelector('.donasi-slider');
+    if (sliderEl) {
+      sliderEl.classList.remove('video-is-playing');
+    }
+  }
+  /* --- ============================================= --- */
+  /* ---      AKHIR KODE BARU                        --- */
+  /* --- ============================================= --- */
 
 </script>
