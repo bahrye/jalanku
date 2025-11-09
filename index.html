@@ -927,6 +927,28 @@
         </div>
       </div>
     </div>
+
+    <div id="alasan-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="alasan-modal-title">Konfirmasi Pembatalan</h2>
+          <span class="close-button" id="btn-alasan-close">&times;</span>
+        </div>
+        <div class="modal-body">
+          <p id="alasan-modal-message">Masukkan alasan pembatalan untuk sekolah: <strong><span id="alasan-modal-nama-sekolah"></span></strong></p>
+          <div class="form-group">
+            <label for="alasan-modal-input">Alasan Pembatalan (Wajib)</label>
+            <textarea id="alasan-modal-input" rows="3" placeholder="Contoh: Admin sekolah mengajukan penghentian layanan..."></textarea>
+            <small class="helper-text">Alasan ini akan terlihat oleh admin sekolah tersebut.</small>
+          </div>
+          <p id="alasan-modal-error" class="message error"></p>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-alasan-cancel"><i class="fas fa-times"></i>Batal</button>
+          <button id="btn-alasan-ok"><i class="fas fa-check"></i>OK, Batalkan</button>
+        </div>
+      </div>
+    </div>
     
     <div id="import-siswa-modal" class="modal">
       <div class="modal-content">
@@ -1306,11 +1328,17 @@
         
         <p id="superadmin-message" class="message" style="display: none;"></p>
 
+        <h3 class="form-section-header" style="color: #fd7e14;">Verifikasi Donasi Tertunda</h3>
+        <div class="superadmin-table-container" id="superadmin-donasi-list">
+          <p>Memuat donasi tertunda...</p>
+        </div>
+        <h3 class="form-section-header">Daftar Sekolah Terdaftar</h3>
         <div class="superadmin-table-container" id="superadmin-sekolah-list">
           <p>Memuat daftar sekolah...</p>
         </div>
-      </div>
+        </div>
     </div>
+
     <div id="superadmin-sekolah-modal" class="modal">
       <div class="modal-content">
         <div class="modal-header">
@@ -1470,27 +1498,55 @@
           <h2>Donasi Fitur Premium</h2>
         </div>
 
-        <div id="donasi-state-form">
-          <p>Aktifkan fitur premium untuk membuka menu <strong>Kelola Data Guru</strong>, <strong>Login Guru</strong>, dan <strong>Cek Kelulusan Siswa</strong>.</p>
+        <div id="donasi-state-form" style="display: none;">
+          <p>Aktifkan fitur premium untuk membuka menu <strong>Kelola Data Guru dan Kelulusan</strong>, <strong>Login Guru</strong>, dan <strong>Cek Kelulusan Siswa</strong>.</p>
           
-          <div class="video-container">
-            <iframe src="https://www.youtube.com/embed/your-video-id" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+          <div class="payment-info-box">
+            <span>Silakan transfer ke E-Wallet ShopeePay:</span>
+            <strong class="payment-number">081543276033</strong>
+            <span>(a.n. Syamsul Bahri)</span>
           </div>
           
-          <p style="margin-top: 20px;">Silakan lakukan donasi untuk pengembangan aplikasi, kemudian unggah bukti transfer Anda di bawah ini.</p>
+          <h3 class="form-section-header" style="margin-top: 30px;">Konfirmasi Donasi Anda</h3>
+          <p style="margin-top: -15px;">Setelah melakukan transfer, mohon isi form di bawah ini.</p>
           
           <form id="form-donasi" onsubmit="return false;">
             <div class="form-group">
-              <label for="donasi-nama">Nama Donatur / Nama Sekolah (Wajib)</label>
-              <input type="text" id="donasi-nama" placeholder="Misal: Admin MI AL HUDA" required>
+              <label for="donasi-email">Email yang digunakan (Akun ini)</label>
+              <input type="email" id="donasi-email" disabled>
             </div>
             <div class="form-group">
-              <label for="donasi-jumlah">Jumlah Donasi (Wajib)</label>
-              <input type="number" id="donasi-jumlah" placeholder="Misal: 50000" inputmode="numeric" required>
+              <label for="donasi-nama-sekolah">Nama Sekolah</label>
+              <input type="text" id="donasi-nama-sekolah" disabled>
+            </div>
+            <div class="form-group">
+              <label for="donasi-metode">Pilih Bank/E-wallet Pengirim (Wajib)</label>
+              <select id="donasi-metode" required>
+                <option value="">-- Pilih Metode --</option>
+                <option value="BCA">BCA</option>
+                <option value="BRI">BRI</option>
+                <option value="Mandiri">Mandiri</option>
+                <option value="BNI">BNI</option>
+                <option value="SeaBank">SeaBank</option>
+                <option value="ShopeePay">ShopeePay</option>
+                <option value="DANA">DANA</option>
+                <option value="OVO">OVO</option>
+                <option value="GoPay">GoPay</option>
+                <option value="LinkAja">LinkAja</option>
+                <option value="Lainnya">Lainnya</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="donasi-nama-rekening">Nama Pemilik Rekening/E-wallet (Wajib)</label>
+              <input type="text" id="donasi-nama-rekening" placeholder="Contoh: Budi Setiawan" required>
+            </div>
+            <div class="form-group">
+              <label for="donasi-jumlah">Jumlah yang Didonasikan (Rp) (Wajib)</label>
+              <input type="number" id="donasi-jumlah" placeholder="Contoh: 15000" inputmode="numeric" required>
             </div>
             
             <div class="form-group">
-              <label for="donasi-file">Bukti Transfer (Wajib - Gambar/PDF)</label>
+              <label for="donasi-file">Upload Bukti Transfer (Wajib - Gambar/PDF)</label>
               <label for="donasi-file" class="file-upload-zone" id="file-upload-zone-donasi">
                 <input type="file" id="donasi-file" accept="image/*,.pdf">
                 <i class="fas fa-cloud-upload-alt"></i>
@@ -1502,7 +1558,7 @@
 
             <hr>
             <div class="form-actions">
-                <button type="button" id="btn-kirim-donasi"><i class="fas fa-paper-plane"></i>Kirim Bukti Donasi</button>
+                <button type="button" id="btn-kirim-donasi"><i class="fas fa-paper-plane"></i>Kirim Konfirmasi Donasi</button>
             </div>
           </form>
         </div>
@@ -1532,21 +1588,6 @@
           <p>Silakan perbaiki data/bukti transfer Anda dan kirim ulang melalui formulir di bawah ini.</p>
         </div>
 
-      </div>
-    </div>
-    <div class="container" id="halaman-superadmin" style="display: none;">
-      <p>Anda login sebagai Superadmin. Anda dapat mengelola semua akun sekolah yang terdaftar di sistem.</p>
-        
-        <p id="superadmin-message" class="message" style="display: none;"></p>
-
-        <h3 class="form-section-header" style="color: #fd7e14;">Verifikasi Donasi Tertunda</h3>
-        <div class="superadmin-table-container" id="superadmin-donasi-list">
-          <p>Memuat donasi tertunda...</p>
-        </div>
-        <h3 class="form-section-header">Daftar Sekolah Terdaftar</h3>
-        <div class="superadmin-table-container" id="superadmin-sekolah-list">
-          <p>Memuat daftar sekolah...</p>
-        </div>
       </div>
     </div>
 
