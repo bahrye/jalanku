@@ -1137,8 +1137,28 @@
       const sekolahID = target.dataset.id;
       if (target.classList.contains('btn-donasi-setujui')) {
         handleDonasiVerify(sekolahID, true);
+      // --- BLOK INI AKAN DIMODIFIKASI ---
       } else if (target.classList.contains('btn-donasi-tolak')) {
-        handleDonasiVerify(sekolahID, false);
+        // Ambil nama sekolah dari card terdekat
+        const card = target.closest('.donasi-card');
+        const namaSekolah = card ? card.querySelector('h4').innerText : 'Sekolah';
+
+        const title = "Konfirmasi Penolakan Donasi";
+        const message = `Masukkan alasan penolakan untuk sekolah: <strong><span id="alasan-modal-nama-sekolah"></span></strong>`;
+
+        // Siapkan callback yang akan dieksekusi oleh modal
+        const callback = function(id, alasan) {
+            setLoading(true, 'Menolak donasi...');
+            google.script.run
+              .withSuccessHandler(onDonasiDiverifikasi)
+              .withFailureHandler(onGagal)
+              .verifikasiDonasi(getToken(), id, false, alasan); // Kirim isApproved = false
+        };
+        
+        // Panggil modal kustom, bukan prompt()
+        showAlasanModal(title, message, sekolahID, namaSekolah, callback);
+        
+      // --- AKHIR MODIFIKASI ---
       } else if (target.classList.contains('btn-donasi-lihat')) {
         window.open(target.dataset.url, '_blank');
       }
@@ -2131,9 +2151,65 @@
           const nama = target.dataset.nama;
           konfirmasiImpersonate(id, nama);
       // --- AKHIR TAMBAHAN ---
+      // --- TAMBAHKAN BLOK ELSE IF BARU DI BAWAH INI ---
+      } else if (target.classList.contains('btn-batalkan-premium')) {
+          const id = target.dataset.id;
+          const nama = target.dataset.nama;
+          konfirmasiBatalkanPremium(id, nama);
       } 
+      // --- AKHIR BLOK BARU ---
     });
     // --- AKHIR TAMBAHAN ---
+
+    // --- TAMBAHKAN LISTENER MODAL ALASAN BARU ---
+    document.getElementById('btn-alasan-close').addEventListener('click', tutupAlasanModal);
+    document.getElementById('btn-alasan-cancel').addEventListener('click', tutupAlasanModal);
+    document.getElementById('btn-alasan-ok').addEventListener('click', handleAlasanConfirm);
+    // --- AKHIR TAMBAHAN ---
+
+    // --- TAMBAHKAN LISTENER UNTUK FILE UPLOAD DONASI ---
+    const fileUploadZoneDonasi = document.getElementById('file-upload-zone-donasi');
+    const fileUploadInputDonasi = document.getElementById('donasi-file');
+    const fileUploadTextDonasi = document.getElementById('file-upload-text-donasi');
+
+    if (fileUploadInputDonasi) {
+      fileUploadInputDonasi.addEventListener('change', (e) => {
+          const fileInput = e.target;
+          if (fileInput.files.length > 0) {
+              const fileName = fileInput.files[0].name;
+              fileUploadTextDonasi.innerText = `File dipilih: ${fileName}`;
+              fileUploadTextDonasi.classList.add('file-chosen');
+              hideMessage('donasi-message');
+          } else {
+              fileUploadTextDonasi.innerText = 'Klik untuk memilih file...';
+              fileUploadTextDonasi.classList.remove('file-chosen');
+          }
+      });
+    }
+
+    if (fileUploadZoneDonasi) {
+      fileUploadZoneDonasi.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          fileUploadZoneDonasi.classList.add('drag-over');
+      });
+
+      fileUploadZoneDonasi.addEventListener('dragleave', (e) => {
+          e.preventDefault();
+          fileUploadZoneDonasi.classList.remove('drag-over');
+      });
+
+      fileUploadZoneDonasi.addEventListener('drop', (e) => {
+          e.preventDefault();
+          fileUploadZoneDonasi.classList.remove('drag-over');
+          
+          if (e.dataTransfer.files.length > 0) {
+            fileUploadInputDonasi.files = e.dataTransfer.files;
+            const changeEvent = new Event('change');
+            fileUploadInputDonasi.dispatchEvent(changeEvent);
+          }
+      });
+    }
+    // --- AKHIR LISTENER FILE UPLOAD DONASI ---
 
     document.addEventListener('keydown', handleKeyDown);
     
@@ -5991,6 +6067,18 @@ function populateSiswaFilters() {
     }
 
     sekolahList.forEach(sekolah => {
+      // --- TAMBAHAN BLOK KONDISIONAL ---
+      let tombolDonasiHtml = '';
+      if (sekolah.donasiStatus === "APPROVED") {
+        tombolDonasiHtml = `
+          <button class="btn-aksi btn-batalkan-premium"
+            data-id="${sekolah.id}" 
+            data-nama="${sekolah.nama}"
+          ><i class="fas fa-ban"></i>Batalkan</button>
+        `;
+      }
+      // --- AKHIR BLOK KONDISIONAL ---
+
       html += `
         <tr>
           <td>${sekolah.nama}</td>
@@ -5998,7 +6086,7 @@ function populateSiswaFilters() {
           <td>${sekolah.email}</td>
           <td>
             <div class="btn-grup-aksi-sa">
-              <button class="btn-aksi btn-aksi-sukses btn-impersonate-sekolah"
+              ${tombolDonasiHtml} <button class="btn-aksi btn-aksi-sukses btn-impersonate-sekolah"
                 data-id="${sekolah.id}" 
                 data-nama="${sekolah.nama}"
               ><i class="fas fa-sign-in-alt"></i>Masuk</button>
@@ -7833,9 +7921,19 @@ function populateSiswaFilters() {
       return;
     }
     
+    // --- PERBARUI FUNGSI INI ---
     const donasi = response.donasi;
+    const admin = response.admin; // Ambil data admin
+    
     globalDonasiStatus = donasi.status;
     globalDonasiDetail = donasi; // Simpan detail (fileUrl, alasan, dll)
+
+    // Isi field yang terkunci
+    if (admin) {
+      document.getElementById('donasi-email').value = admin.email || '';
+      document.getElementById('donasi-nama-sekolah').value = admin.namaSekolah || '';
+    }
+    // --- AKHIR PERBARUAN ---
 
     if (donasi.status === 'PENDING') {
       document.getElementById('donasi-state-pending').style.display = 'block';
@@ -7853,7 +7951,11 @@ function populateSiswaFilters() {
       
     } else if (donasi.status === 'REJECTED') {
       document.getElementById('donasi-state-rejected').style.display = 'block';
+      
+      // ▼▼▼ INI LOGIKA YANG DIMAKSUD ▼▼▼
       document.getElementById('donasi-rejected-reason').innerText = `Alasan: ${donasi.alasan || "Tidak ada alasan."}`;
+      // ▲▲▲ INI LOGIKA YANG DIMAKSUD ▲▲▲
+
       // Tampilkan form di bawah pesan reject
       document.getElementById('donasi-state-form').style.display = 'block'; 
       
@@ -7867,16 +7969,28 @@ function populateSiswaFilters() {
 
   /**
    * [BARU] Mengirimkan form donasi.
+   * --- FUNGSI INI DIPERBARUI TOTAL ---
    */
   function submitDonasiForm() {
     hideMessage('donasi-message');
-    const nama = document.getElementById('donasi-nama').value.trim();
+    
+    // Ambil data dari form baru
+    const metode = document.getElementById('donasi-metode').value;
+    const namaRekening = document.getElementById('donasi-nama-rekening').value.trim();
     const jumlah = document.getElementById('donasi-jumlah').value;
     const fileInput = document.getElementById('donasi-file');
     const file = fileInput.files[0];
     
-    if (!nama || !jumlah) {
-      showMessage('donasi-message', 'Nama dan Jumlah donasi wajib diisi.', true);
+    if (!metode) {
+      showMessage('donasi-message', 'Silakan pilih metode pembayaran.', true);
+      return;
+    }
+    if (!namaRekening) {
+      showMessage('donasi-message', 'Nama pemilik rekening/e-wallet wajib diisi.', true);
+      return;
+    }
+    if (!jumlah) {
+      showMessage('donasi-message', 'Jumlah donasi wajib diisi.', true);
       return;
     }
     if (!file) {
@@ -7893,15 +8007,18 @@ function populateSiswaFilters() {
         mimeType: file.type, 
         fileName: file.name 
       };
+      
+      // Buat JSON baru
       const formDataJSON = JSON.stringify({
-        nama: nama,
+        metode: metode,
+        namaRekening: namaRekening,
         jumlah: jumlah
       });
       
       google.script.run
         .withSuccessHandler(onDonasiSelesai)
         .withFailureHandler(onGagalKirimDonasi)
-        .submitDonasi(getToken(), fileData, formDataJSON);
+        .submitDonasi(getToken(), fileData, formDataJSON); // Fungsi backend tetap sama
     };
     reader.onerror = (e) => {
       onGagalKirimDonasi({ message: 'Gagal membaca file.' });
@@ -7970,13 +8087,26 @@ function populateSiswaFilters() {
     
     let html = '';
     list.forEach(item => {
-      let dataHtml = "Tidak ada data.";
+      // --- BLOK INI AKAN DIMODIFIKASI ---
+      let dataHtml = '<p class="donasi-detail-item"><em>Data form tidak tersedia.</em></p>';
       if (item.dataJson) {
         try {
           const data = JSON.parse(item.dataJson);
-          dataHtml = `<strong>Nama:</strong> ${data.nama || 'N/A'} | <strong>Jumlah:</strong> ${data.jumlah || 'N/A'}`;
-        } catch(e) {}
+          // Format Angka ke Rupiah
+          const jumlahRp = Number(data.jumlah || 0).toLocaleString('id-ID');
+          
+          dataHtml = `
+            <div class="donasi-detail-list">
+              <span class="donasi-detail-item"><strong>Metode:</strong> ${data.metode || 'N/A'}</span>
+              <span class="donasi-detail-item"><strong>Pengirim:</strong> ${data.namaRekening || 'N/A'}</span>
+              <span class="donasi-detail-item"><strong>Jumlah:</strong> Rp ${jumlahRp}</span>
+            </div>
+          `;
+        } catch(e) {
+          dataHtml = `<p class="donasi-detail-item"><em>Gagal memuat data donasi.</em></p>`;
+        }
       }
+      // --- AKHIR MODIFIKASI ---
       
       html += `
         <div class="donasi-card">
@@ -7995,25 +8125,23 @@ function populateSiswaFilters() {
 
   /**
    * [BARU] Handler untuk tombol Setujui/Tolak Superadmin.
+   * --- FUNGSI INI DIMODIFIKASI (HANYA MENANGANI 'SETUJUI') ---
    */
   function handleDonasiVerify(sekolahID, isApproved) {
-    let alasan = "";
+    // Fungsi ini sekarang HANYA menangani 'isApproved = true'
+    // Kasus 'Tolak' (isApproved = false) ditangani langsung oleh event listener di atas
     if (!isApproved) {
-      alasan = prompt("Harap masukkan alasan penolakan (akan dilihat oleh admin sekolah):");
-      if (alasan === null) return; // Dibatalkan
-      if (alasan.trim() === "") {
-        showToast("Alasan tidak boleh kosong.", 'gagal');
-        return;
-      }
+      console.error("handleDonasiVerify dipanggil untuk 'Tolak'. Ini seharusnya tidak terjadi.");
+      return;
     }
-    
-    const actionText = isApproved ? 'Menyetujui' : 'Menolak';
+
+    const actionText = 'Menyetujui';
     setLoading(true, `${actionText} donasi...`);
     
     google.script.run
       .withSuccessHandler(onDonasiDiverifikasi)
       .withFailureHandler(onGagal)
-      .verifikasiDonasi(getToken(), sekolahID, isApproved, alasan);
+      .verifikasiDonasi(getToken(), sekolahID, true, ""); // Alasan kosong untuk 'Setujui'
   }
 
   function onDonasiDiverifikasi(response) {
@@ -8023,6 +8151,95 @@ function populateSiswaFilters() {
       bukaHalamanSuperadmin(); // Muat ulang daftar donasi dan sekolah
     } else {
       onGagal(response);
+    }
+  }
+
+  // --- TAMBAHKAN FUNGSI-FUNGSI BARU DI BAWAH INI ---
+  
+  /**
+   * [BARU] Menampilkan modal kustom untuk meminta alasan.
+   */
+  function showAlasanModal(title, message, sekolahID, sekolahNama, onConfirmCallback) {
+    const modal = document.getElementById('alasan-modal');
+    hideMessage('alasan-modal-error');
+    
+    document.getElementById('alasan-modal-title').innerText = title;
+    document.getElementById('alasan-modal-message').innerHTML = message;
+    document.getElementById('alasan-modal-nama-sekolah').innerText = sekolahNama;
+    document.getElementById('alasan-modal-input').value = '';
+    
+    // Simpan data & callback di elemen modal untuk diambil nanti
+    modal.dataset.sekolahId = sekolahID;
+    modal.onConfirm = onConfirmCallback;
+    
+    modal.classList.add('show');
+    document.getElementById('alasan-modal-input').focus();
+  }
+
+  /**
+   * [BARU] Menutup modal alasan.
+   */
+  function tutupAlasanModal() {
+    const modal = document.getElementById('alasan-modal');
+    modal.classList.remove('show');
+    modal.dataset.sekolahId = '';
+    modal.onConfirm = null;
+    hideMessage('alasan-modal-error');
+  }
+
+  /**
+   * [BARU] Menangani klik OK pada modal alasan.
+   */
+  function handleAlasanConfirm() {
+    const modal = document.getElementById('alasan-modal');
+    const alasanInput = document.getElementById('alasan-modal-input');
+    const alasan = alasanInput.value.trim();
+    
+    if (alasan === "") {
+      showMessage('alasan-modal-error', 'Alasan pembatalan tidak boleh kosong.', true);
+      alasanInput.focus();
+      return;
+    }
+    
+    if (typeof modal.onConfirm === 'function') {
+      const sekolahID = modal.dataset.sekolahId;
+      modal.onConfirm(sekolahID, alasan); // Panggil callback asli
+    }
+    
+    tutupAlasanModal();
+  }
+
+  /**
+   * [SUPERADMIN] Konfirmasi pembatalan premium.
+   * --- FUNGSI INI DIMODIFIKASI UNTUK MENGGUNAKAN MODAL BARU ---
+   */
+  function konfirmasiBatalkanPremium(sekolahID, namaSekolah) { 
+    const title = "Batalkan Status Premium";
+    const message = `Masukkan alasan pembatalan untuk sekolah: <strong><span id="alasan-modal-nama-sekolah"></span></strong>`;
+
+    // Callback yang akan dijalankan oleh modal kustom saat di-OK
+    const callback = function(id, alasan) {
+      setLoading(true, 'Membatalkan status premium...');
+      google.script.run
+        .withSuccessHandler(onPremiumDibatalkan)
+        .withFailureHandler(onGagal)
+        .superadminBatalkanPremium(getToken(), id, alasan); // Kirim 'id' dan 'alasan' dari modal
+    };
+
+    // Tampilkan modal kustom baru
+    showAlasanModal(title, message, sekolahID, namaSekolah, callback);
+  }
+
+  /**
+   * [SUPERADMIN] Callback setelah premium dibatalkan.
+   */
+  function onPremiumDibatalkan(response) {
+    setLoading(false);
+    if (response.status === 'sukses') {
+      showToast(response.message, 'sukses');
+      bukaHalamanSuperadmin(); // Muat ulang daftar sekolah
+    } else {
+      showMessage('superadmin-message', response.message, true);
     }
   }
 
