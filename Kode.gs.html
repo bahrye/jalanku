@@ -5,6 +5,10 @@ const SHEET_SUPERADMIN = "Sheet_Superadmin";
 const MASTER_SHEET_ID = "191TzI0vRzK8xg7kGym8qUnvXz_edlCH_IJmmwMZMK_M"; 
 const TARGET_FOLDER_ID = "1Xu9vSZQKAxVCNDuAXI8W5l-3xb58cQm9";
 
+// --- TAMBAHAN BARU ---
+const DONASI_FOLDER_ID = "1ETK_gUuPQsuSeNu_XbIctkvVb9JSPmS9"; // <== PENTING: Ganti ID ini
+// --- AKHIR TAMBAHAN ---
+
 const MASTER_SHEET_CACHE_KEY = 'MASTER_SHEET_DATA_V1';
 
 const MAPEL_CACHE_KEY = 'mapel_data_v1';
@@ -361,7 +365,11 @@ function prosesVerifikasiToken(token) {
             dbHash, 
             newSSID,
             dbSalt,
-            npsn
+            npsn,
+            "NONE", // DonasiStatus
+            "",     // DonasiFileID
+            "",     // DonasiDataJSON
+            ""      // DonasiAlasanTolak
           ]);
 
           sheetPending.deleteRow(i + 1);
@@ -642,6 +650,11 @@ function prosesLogin(email, password) {
     const namaSekolahUpper = cachedRow[1].toUpperCase();
     const userSpreadsheetID = cachedRow[5];
     const jenjangPilihan = getJenjangPilihanFromSheet(userSpreadsheetID);
+
+    // --- TAMBAHKAN BARIS INI ---
+    const donasiStatus = cachedRow[8] || "NONE"; // Kolom I adalah DonasiStatus
+    // --- AKHIR TAMBAHAN ---
+
     const sessionData = {
       role: 'admin',
       sekolahID: cachedRow[0],
@@ -649,6 +662,7 @@ function prosesLogin(email, password) {
       jenjang: cachedRow[2],
       spreadsheetID: userSpreadsheetID,
       jenjangPilihan: jenjangPilihan,
+      donasiStatus: donasiStatus,
       lastActivity: new Date().getTime()
     };
     CacheService.getScriptCache().put('SESSION_' + token, JSON.stringify(sessionData), 21600);
@@ -658,6 +672,7 @@ function prosesLogin(email, password) {
       namaSekolah: namaSekolahUpper,
       jenjang: cachedRow[2],
       jenjangPilihan: jenjangPilihan,
+      donasiStatus: donasiStatus,
       token: token,
       appUrl: appUrl
     };
@@ -793,6 +808,26 @@ function validateAndRefreshSession(token) {
   }
   const sessionData = JSON.parse(sessionJson);
   const now = new Date().getTime();
+
+  // --- TAMBAHKAN BLOK INI ---
+  // Refresh status donasi dari DB jika admin
+  if (sessionData.role === 'admin' && !sessionData.isImpersonating) {
+    try {
+      const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+      const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+      const dataSekolah = sheetSekolah.getDataRange().getValues();
+      for (let i = 1; i < dataSekolah.length; i++) {
+        if (dataSekolah[i][0] === sessionData.sekolahID) {
+          sessionData.donasiStatus = dataSekolah[i][8] || "NONE"; // Kolom I
+          break;
+        }
+      }
+    } catch (e) {
+      Logger.log("Gagal refresh donasi status untuk " + sessionData.sekolahID + ": " + e.message);
+    }
+  }
+  // --- AKHIR BLOK ---
+
   const threeHours = 3 * 60 * 60 * 1000;
   if (now - sessionData.lastActivity > threeHours) {
     cache.remove('SESSION_' + token);
@@ -823,6 +858,7 @@ function checkToken(tokenFromClient) {
         namaSekolah: sessionData.namaSekolah,
         jenjang: sessionData.jenjang,
         jenjangPilihan: sessionData.jenjangPilihan,
+        donasiStatus: sessionData.donasiStatus || "NONE",
         appUrl: appUrl // <-- TAMBAHKAN INI
       };
     } else if (sessionData.role === 'guru') {
@@ -948,7 +984,12 @@ function superadminSaveSekolah(token, data) {
         email,
         newHash,
         newSSID,
-        newSalt
+        newSalt,
+        "", // NPSN (kosongkan saja, bisa diisi admin sekolah nanti)
+        "NONE", // DonasiStatus
+        "",     // DonasiFileID
+        "",     // DonasiDataJSON
+        ""      // DonasiAlasanTolak
       ]);
     } else {
       let rowToUpdate = -1;
@@ -3923,6 +3964,23 @@ function validateAdminSession(token) {
  * Mengasumsikan validasi sesi dan lock sudah ditangani oleh pemanggil.
  */
 function _internalPublishLogic(spreadsheetID, sekolahID, namaSekolah, tanggalPengumumanISO) {
+  // --- TAMBAHKAN BLOK GATING INI ---
+  // Cek status donasi DARI FUNGSI INI (karena recalculate juga memanggil ini)
+  const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+  const dataSekolah = sheetSekolah.getDataRange().getValues();
+  let donasiStatus = "NONE";
+  for (let i = 1; i < dataSekolah.length; i++) {
+    if (dataSekolah[i][0] === sekolahID) {
+      donasiStatus = dataSekolah[i][8] || "NONE";
+      break;
+    }
+  }
+  if (donasiStatus !== "APPROVED") {
+    throw new Error("Tidak dapat mempublikasikan hasil. Fitur Kelulusan adalah layanan premium. Silakan aktifkan donasi.");
+  }
+  // --- AKHIR BLOK ---
+
   const ss = SpreadsheetApp.openById(spreadsheetID);
 
   // 1. Ambil data siswa (NISN, Nama, Tgl Lahir)
@@ -4143,6 +4201,12 @@ function cekStatusSiswa(nisn, tglLahir) {
     if (!dataWrapper) {
       return { status: 'error', message: 'Hasil kelulusan untuk sekolah ini belum dipublikasikan oleh Admin.' };
     }
+
+    // --- TAMBAHKAN BLOK GATING INI ---
+    if (dataWrapper.donasiStatus !== "APPROVED") {
+      return { status: 'error', message: 'Fitur Cek Kelulusan belum diaktifkan oleh sekolah ini.' };
+    }
+    // --- AKHIR BLOK ---
     
     const dataSiswa = dataWrapper.hasil[nisnTrimmed];
     
@@ -4190,6 +4254,17 @@ function rebuildKelulusanCacheFromDB() {
 
   try {
     const db = SpreadsheetApp.openById(MASTER_KELULUSAN_DB_ID);
+
+    // --- TAMBAHKAN BLOK INI ---
+    // 1. Buat Peta Donasi
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    const dataSekolah = sheetSekolah.getDataRange().getValues();
+    const donasiStatusMap = new Map();
+    for(let i=1; i < dataSekolah.length; i++) {
+      donasiStatusMap.set(dataSekolah[i][0], dataSekolah[i][8] || "NONE"); // Kolom A -> Kolom I
+    }
+    // --- AKHIR BLOK ---
     
     const sheetIndex = db.getSheetByName('Sheet_Master_Index');
     const indexData = sheetIndex.getRange(2, 1, sheetIndex.getLastRow() - 1, 2).getDisplayValues(); 
@@ -4210,6 +4285,7 @@ function rebuildKelulusanCacheFromDB() {
         const dataWrapper = {
           tanggalPengumuman: tanggalISO,
           namaSekolah: namaSekolah,
+          donasiStatus: donasiStatusMap.get(sekolahID) || "NONE",
           hasil: JSON.parse(hasilJson)
         };
         allHasilWrappers[sekolahID] = dataWrapper;
@@ -4255,6 +4331,13 @@ function prosesLoginGuru(npsn, email, password) {
     if (!targetSekolah) {
       return { status: "gagal", message: "NPSN/Kode Sekolah tidak ditemukan." };
     }
+
+    // --- TAMBAHKAN BLOK GATING INI ---
+    const donasiStatus = targetSekolah[8] || "NONE"; // Kolom I
+    if (donasiStatus !== "APPROVED") {
+      return { status: "gagal", message: "Fitur Login Guru adalah fitur premium. Silakan minta Admin Sekolah Anda untuk mengaktifkan donasi." };
+    }
+    // --- AKHIR BLOK ---
 
     const spreadsheetID = targetSekolah[5];
     const jenjangPilihan = getJenjangPilihanFromSheet(spreadsheetID);
@@ -5001,6 +5084,257 @@ function syncGuruClassesToSingleClass(token) {
     }
     
     return { status: "sukses", message: `Sinkronisasi selesai. ${changesMade} data guru diperbarui.` };
+
+  } catch (e) {
+    return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Di dalam Kode.gs.html (FUNGSI BARU DI PALING BAWAH)
+
+/**
+ * [ADMIN] Mendapatkan detail status donasi saat ini.
+ */
+function getDonasiStatusDetail(token) {
+  try {
+    const { sessionData } = validateAdminSession(token); // Ini sudah refresh sesi
+    
+    // Kita bisa langsung pakai data dari sesi yang sudah di-refresh
+    if (sessionData.donasiStatus === "NONE") {
+      return { status: "sukses", donasi: { status: "NONE" } };
+    }
+
+    // Jika tidak NONE, ambil detail lengkap dari Master Sheet
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    const dataSekolah = sheetSekolah.getDataRange().getValues();
+    
+    for (let i = 1; i < dataSekolah.length; i++) {
+      if (dataSekolah[i][0] === sessionData.sekolahID) {
+        const fileId = dataSekolah[i][9]; // Kolom J (FileID)
+        let fileUrl = null;
+        if (fileId) {
+          try {
+            // Buat link view sementara
+            const file = DriveApp.getFileById(fileId);
+            fileUrl = file.getDownloadUrl().replace("&export=download", ""); // Dapatkan link viewer
+          } catch (e) {
+            Logger.log("Gagal get file URL untuk donasi: " + e.message);
+          }
+        }
+        
+        return { 
+          status: "sukses", 
+          donasi: {
+            status: dataSekolah[i][8],     // Kolom I
+            fileId: fileId,
+            fileUrl: fileUrl,
+            dataJson: dataSekolah[i][10],  // Kolom K
+            alasan: dataSekolah[i][11]   // Kolom L
+          }
+        };
+      }
+    }
+    throw new Error("Data sekolah tidak ditemukan.");
+  } catch (e) {
+    return { status: "gagal", message: e.message };
+  }
+}
+
+/**
+ * [ADMIN] Mengirimkan formulir donasi.
+ */
+function submitDonasi(token, fileData, formDataJSON) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const { sessionData } = validateAdminSession(token);
+    
+    // 1. Upload file bukti
+    const { base64, mimeType, fileName } = fileData;
+    const decodedData = Utilities.base64Decode(base64.split(',')[1]);
+    const blob = Utilities.newBlob(decodedData, mimeType, `[${sessionData.namaSekolah}] - ${fileName}`);
+    
+    const folder = DriveApp.getFolderById(DONASI_FOLDER_ID);
+    const newFile = folder.createFile(blob);
+    const newFileId = newFile.getId();
+    
+    // 2. Update Master Sheet
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    const dataSekolah = sheetSekolah.getDataRange().getValues();
+    
+    let rowToUpdate = -1;
+    let oldFileId = null;
+    for (let i = 1; i < dataSekolah.length; i++) {
+      if (dataSekolah[i][0] === sessionData.sekolahID) {
+        rowToUpdate = i + 1;
+        oldFileId = dataSekolah[i][9]; // Kolom J (FileID lama)
+        break;
+      }
+    }
+    
+    if (rowToUpdate === -1) {
+      throw new Error("Gagal menemukan data sekolah Anda.");
+    }
+    
+    // 3. Hapus file lama jika ada
+    if (oldFileId) {
+      try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch(e) {}
+    }
+    
+    // 4. Tulis data baru
+    sheetSekolah.getRange(rowToUpdate, 9, 1, 4).setValues([[
+      "PENDING",      // Kolom I (Status)
+      newFileId,      // Kolom J (FileID)
+      formDataJSON,   // Kolom K (Data Form)
+      ""              // Kolom L (Alasan)
+    ]]);
+    
+    clearMasterSheetCache();
+    
+    return { status: "sukses", donasiStatus: "PENDING" };
+    
+  } catch (e) {
+    return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * [ADMIN] Membatalkan donasi yang sedang pending.
+ */
+function batalkanDonasi(token) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const { sessionData } = validateAdminSession(token);
+
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    const dataSekolah = sheetSekolah.getDataRange().getValues();
+    
+    let rowToUpdate = -1;
+    let fileToTrash = null;
+    for (let i = 1; i < dataSekolah.length; i++) {
+      if (dataSekolah[i][0] === sessionData.sekolahID) {
+        if (dataSekolah[i][8] === "PENDING") { // Hanya bisa batalkan yg PENDING
+          rowToUpdate = i + 1;
+          fileToTrash = dataSekolah[i][9]; // Kolom J (FileID)
+        }
+        break;
+      }
+    }
+    
+    if (rowToUpdate === -1) {
+      throw new Error("Gagal menemukan data donasi pending.");
+    }
+
+    if (fileToTrash) {
+      try { DriveApp.getFileById(fileToTrash).setTrashed(true); } catch(e) {}
+    }
+    
+    sheetSekolah.getRange(rowToUpdate, 9, 1, 4).setValues([[
+      "NONE", // Kolom I (Status)
+      "",     // Kolom J (FileID)
+      "",     // Kolom K (Data Form)
+      ""      // Kolom L (Alasan)
+    ]]);
+    
+    clearMasterSheetCache();
+    
+    return { status: "sukses", donasiStatus: "NONE" };
+    
+  } catch (e) {
+    return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * [SUPERADMIN] Mengambil daftar donasi yang PENDING.
+ */
+function getDonasiList(token) {
+  try {
+    validateSuperadminSession(token);
+    const dataSekolah = getCachedMasterSheetData();
+    dataSekolah.shift(); // Hapus header
+    
+    const pendingList = [];
+    
+    for (const row of dataSekolah) {
+      const donasiStatus = row[8]; // Kolom I
+      if (donasiStatus === "PENDING") {
+        const fileId = row[9]; // Kolom J
+        let fileUrl = null;
+        if (fileId) {
+          try {
+            const file = DriveApp.getFileById(fileId);
+            file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); // Pastikan SA bisa lihat
+            fileUrl = file.getDownloadUrl().replace("&export=download", ""); // Dapatkan link viewer
+          } catch (e) {
+            fileUrl = "ERROR: " + e.message;
+          }
+        }
+        
+        pendingList.push({
+          sekolahID: row[0],
+          namaSekolah: row[1],
+          dataJson: row[10], // Kolom K
+          fileUrl: fileUrl
+        });
+      }
+    }
+    
+    return { status: "sukses", pendingList: pendingList };
+  } catch (e) {
+    return { status: "gagal", message: e.message };
+  }
+}
+
+/**
+ * [SUPERADMIN] Memverifikasi (Setujui/Tolak) donasi.
+ */
+function verifikasiDonasi(token, sekolahID, isApproved, alasan) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    validateSuperadminSession(token);
+    
+    if (!sekolahID) throw new Error("SekolahID tidak ada.");
+    if (!isApproved && !alasan) throw new Error("Alasan penolakan wajib diisi.");
+
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    const dataSekolah = sheetSekolah.getDataRange().getValues();
+    
+    let rowToUpdate = -1;
+    for (let i = 1; i < dataSekolah.length; i++) {
+      if (dataSekolah[i][0] === sekolahID) {
+        rowToUpdate = i + 1;
+        break;
+      }
+    }
+    
+    if (rowToUpdate === -1) {
+      throw new Error("Gagal menemukan data sekolah.");
+    }
+    
+    if (isApproved) {
+      sheetSekolah.getRange(rowToUpdate, 9).setValue("APPROVED"); // Kolom I
+      sheetSekolah.getRange(rowToUpdate, 12).setValue("");      // Kolom L
+    } else {
+      sheetSekolah.getRange(rowToUpdate, 9).setValue("REJECTED"); // Kolom I
+      sheetSekolah.getRange(rowToUpdate, 12).setValue(alasan); // Kolom L
+    }
+    
+    clearMasterSheetCache();
+    
+    return { status: "sukses", message: "Verifikasi berhasil disimpan." };
 
   } catch (e) {
     return { status: "gagal", message: e.message };
