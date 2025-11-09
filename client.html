@@ -7941,8 +7941,18 @@ function populateSiswaFilters() {
       if (donasi.dataJson) {
         try {
           const data = JSON.parse(donasi.dataJson);
-          dataHtml = `<strong>Nama:</strong> ${data.nama}<br><strong>Jumlah:</strong> ${data.jumlah}`;
-        } catch(e) {}
+          // Format Angka ke Rupiah
+          const jumlahRp = Number(data.jumlah || 0).toLocaleString('id-ID');
+          
+          // PERBAIKAN: Gunakan data.namaRekening (bukan data.nama) dan tambahkan data.metode
+          dataHtml = `
+            <strong>Metode:</strong> ${data.metode || 'N/A'}<br>
+            <strong>Nama Pengirim:</strong> ${data.namaRekening || 'N/A'}<br>
+            <strong>Jumlah:</strong> Rp ${jumlahRp}
+          `;
+        } catch(e) {
+          dataHtml = "<em>Gagal memuat detail donasi.</em>";
+        }
       }
       document.getElementById('donasi-pending-data').innerHTML = dataHtml;
       
@@ -8242,5 +8252,46 @@ function populateSiswaFilters() {
       showMessage('superadmin-message', response.message, true);
     }
   }
+
+  /* --- ============================================= --- */
+  /* ---      INISIALISASI SLIDER DONASI (SWIPER)      --- */
+  /* --- ============================================= --- */
+
+  // Pastikan kode ini ada DI LUAR (setelah) fungsi-fungsi lain
+  // Ia akan otomatis berjalan saat halaman dimuat
+
+  var donasiSwiper = new Swiper(".donasi-slider", {
+    // Opsi Loop (Kembali ke awal setelah slide terakhir)
+    loop: true,
+
+    // Indikator Titik-titik
+    pagination: {
+      el: ".swiper-pagination",
+      clickable: true,
+    },
+
+    // Tombol Panah Kanan/Kiri
+    navigation: {
+      nextEl: ".swiper-button-next",
+      prevEl: ".swiper-button-prev",
+    },
+    
+    // Bonus: Otomatis hentikan video YouTube saat slide diganti
+    on: {
+      slideChange: function () {
+        try {
+          // Cari semua iframe di dalam slider
+          var iframes = this.el.querySelectorAll('iframe');
+          iframes.forEach(function(iframe) {
+            // Reset 'src'-nya untuk menghentikan video
+            var iframeSrc = iframe.src;
+            iframe.src = iframeSrc; 
+          });
+        } catch (e) {
+          console.warn("Gagal menghentikan video:", e);
+        }
+      },
+    }
+  });
 
 </script>
