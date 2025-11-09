@@ -2783,11 +2783,6 @@
       background-color: #e9ecef;
   }
 
-  .superadmin-table td:last-child {
-      width: 180px; 
-      text-align: right;
-  }
-
   .btn-grup-aksi-sa {
     display: flex;
     gap: 8px;
@@ -2850,6 +2845,82 @@
   }
   #btn-kembali-ke-superadmin:hover {
       background-color: #e66a00;
+  }
+
+  /* --- TAMBAHKAN BLOK BARU INI --- */
+  .btn-batalkan-premium {
+    background-color: #fd7e14; /* Oranye/Warning */
+  }
+  .btn-batalkan-premium:hover {
+    background-color: #e66a00;
+  }
+
+  /* --- ============================================= --- */
+  /* ---      GAYA BARU UNTUK MODAL ALASAN           --- */
+  /* --- ============================================= --- */
+
+  #alasan-modal .modal-content {
+    max-width: 480px;
+  }
+
+  #alasan-modal-message {
+    font-size: 16px;
+    line-height: 1.5;
+    margin-top: 0;
+  }
+  #alasan-modal-message strong {
+    color: var(--danger-color);
+  }
+
+  #alasan-modal-input {
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 5px;
+  }
+
+  #btn-alasan-ok {
+    width: auto;
+    margin-left: 10px;
+    background-color: var(--danger-color); /* Tombol OK jadi merah */
+  }
+  #btn-alasan-ok:hover {
+    background-color: #b02a37;
+  }
+
+  #btn-alasan-cancel {
+    width: auto;
+    background-color: var(--secondary-color);
+  }
+  #btn-alasan-cancel:hover {
+    background-color: #5a6268;
+  }
+
+  /* --- TAMBAHKAN BLOK BARU INI UNTUK JARAK DONASI --- */
+  #donasi-state-rejected {
+    margin-top: 30px; /* Menambah jarak dari form di atasnya */
+    padding-top: 20px;
+    border-top: 1px solid var(--border-color); /* Memberi garis pemisah */
+  }
+
+  /* --- TAMBAHKAN BLOK BARU INI --- */
+  .payment-info-box {
+    background-color: #e7f1ff;
+    border: 1px solid #b6d4fe;
+    border-radius: 12px;
+    padding: 20px 25px;
+    text-align: center;
+    margin-top: 20px;
+  }
+  .payment-info-box span {
+    display: block;
+    font-size: 16px;
+    color: #0b5ed7;
+  }
+  .payment-info-box .payment-number {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin: 8px 0;
   }
 
   /* --- ============================================= --- */
@@ -3950,8 +4021,6 @@
     z-index: 1; /* Di bawah stamp */
   }
 
-  /* --- GANTI SELURUH BLOK INI --- */
-
   /* Override: Kembalikan warna asli untuk kartu Guru... */
   #btn-buka-guru.card-disabled,
   #btn-buka-guru:disabled { 
@@ -3962,6 +4031,15 @@
     transform: none !important;
     cursor: not-allowed; 
   }
+
+  /* --- TAMBAHAN BARU: Kembalikan warna ikon/teks non-hover --- */
+  #btn-buka-guru.card-disabled i,
+  #btn-buka-guru:disabled i,
+  #btn-buka-guru.card-disabled span,
+  #btn-buka-guru:disabled span {
+    color: #20c997 !important; /* Warna hijau asli */
+  }
+  /* --- AKHIR TAMBAHAN BARU --- */
 
   /* --- TAMBAHKAN BLOK HOVER INI --- */
   #btn-buka-guru.card-disabled:hover,
@@ -3989,6 +4067,15 @@
     transform: none !important;
     cursor: not-allowed;
   }
+
+  /* --- TAMBAHAN BARU: Kembalikan warna ikon/teks non-hover --- */
+  #btn-buka-kelola-kelulusan.card-disabled i,
+  #btn-buka-kelola-kelulusan:disabled i,
+  #btn-buka-kelola-kelulusan.card-disabled span,
+  #btn-buka-kelola-kelulusan:disabled span {
+    color: #d63384 !important; /* Warna pink/ungu asli */
+  }
+  /* --- AKHIR TAMBAHAN BARU --- */
 
   /* --- TAMBAHKAN BLOK HOVER INI --- */
   #btn-buka-kelola-kelulusan.card-disabled:hover,
@@ -4092,6 +4179,26 @@
     font-size: 14px;
     margin: 5px 0;
   }
+
+  /* --- TAMBAHKAN BLOK BARU INI --- */
+  .donasi-detail-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 10px 0;
+    font-size: 14px;
+  }
+  .donasi-detail-item {
+    display: block;
+    color: var(--text-dark);
+    line-height: 1.4;
+  }
+  .donasi-detail-item strong {
+    color: #664d03;
+    min-width: 75px;
+    display: inline-block;
+  }
+
   .donasi-card p strong {
     color: var(--text-dark);
   }
