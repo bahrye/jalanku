@@ -902,7 +902,8 @@ function getSekolahList(token) {
         nama: row[1],
         jenjang: row[2],
         email: row[3],
-        spreadsheetId: row[5]
+        spreadsheetId: row[5],
+        donasiStatus: row[8] || "NONE"
       };
     });
     return { status: "sukses", sekolah: sekolahList };
@@ -939,6 +940,54 @@ function superadminDeleteSekolah(token, sekolahID, spreadsheetID) {
     }
     clearMasterSheetCache();
     return { status: "sukses", message: "Sekolah berhasil dihapus." };
+  } catch (e) {
+    return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * [SUPERADMIN] Membatalkan status premium sekolah yang sudah APPROVED.
+ */
+function superadminBatalkanPremium(token, sekolahID, alasan) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    validateSuperadminSession(token);
+    
+    if (!sekolahID) throw new Error("SekolahID tidak ada.");
+    if (!alasan) throw new Error("Alasan pembatalan wajib diisi.");
+
+    const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
+    const dataSekolah = sheetSekolah.getDataRange().getValues();
+    
+    let rowToUpdate = -1;
+    for (let i = 1; i < dataSekolah.length; i++) {
+      if (dataSekolah[i][0] === sekolahID) {
+        rowToUpdate = i + 1;
+        break;
+      }
+    }
+    
+    if (rowToUpdate === -1) {
+      throw new Error("Gagal menemukan data sekolah.");
+    }
+    
+    // Ubah status jadi REJECTED dan catat alasannya
+    sheetSekolah.getRange(rowToUpdate, 9).setValue("REJECTED"); // Kolom I (Status)
+    sheetSekolah.getRange(rowToUpdate, 12).setValue(alasan); // Kolom L (Alasan)
+    
+    clearMasterSheetCache();
+    
+    // Hapus juga cache kelulusan jika ada, karena fitur dimatikan
+    const scriptCache = CacheService.getScriptCache();
+    scriptCache.remove(MASTER_NISN_INDEX_KEY);
+    scriptCache.remove(HASIL_KELULUSAN_PREFIX + sekolahID);
+    
+    return { status: "sukses", message: "Status premium berhasil dibatalkan." };
+
   } catch (e) {
     return { status: "gagal", message: e.message };
   } finally {
@@ -3964,8 +4013,8 @@ function validateAdminSession(token) {
  * Mengasumsikan validasi sesi dan lock sudah ditangani oleh pemanggil.
  */
 function _internalPublishLogic(spreadsheetID, sekolahID, namaSekolah, tanggalPengumumanISO) {
-  // --- TAMBAHKAN BLOK GATING INI ---
-  // Cek status donasi DARI FUNGSI INI (karena recalculate juga memanggil ini)
+  // --- PERBAIKAN BLOK GATING ---
+  // Cek status donasi.
   const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
   const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
   const dataSekolah = sheetSekolah.getDataRange().getValues();
@@ -3976,10 +4025,14 @@ function _internalPublishLogic(spreadsheetID, sekolahID, namaSekolah, tanggalPen
       break;
     }
   }
+  
+  // JIKA DONASI TIDAK AKTIF:
   if (donasiStatus !== "APPROVED") {
-    throw new Error("Tidak dapat mempublikasikan hasil. Fitur Kelulusan adalah layanan premium. Silakan aktifkan donasi.");
+    // Jangan lempar error, cukup hentikan fungsi secara diam-diam.
+    Logger.log(`_internalPublishLogic dihentikan untuk ${sekolahID} (Donasi: ${donasiStatus}). Kalkulasi nilai tetap berhasil.`);
+    return; // <== INI ADALAH PERUBAHAN UTAMA
   }
-  // --- AKHIR BLOK ---
+  // --- AKHIR PERBAIKAN BLOK ---
 
   const ss = SpreadsheetApp.openById(spreadsheetID);
 
@@ -5092,8 +5145,6 @@ function syncGuruClassesToSingleClass(token) {
   }
 }
 
-// Di dalam Kode.gs.html (FUNGSI BARU DI PALING BAWAH)
-
 /**
  * [ADMIN] Mendapatkan detail status donasi saat ini.
  */
@@ -5101,43 +5152,54 @@ function getDonasiStatusDetail(token) {
   try {
     const { sessionData } = validateAdminSession(token); // Ini sudah refresh sesi
     
-    // Kita bisa langsung pakai data dari sesi yang sudah di-refresh
-    if (sessionData.donasiStatus === "NONE") {
-      return { status: "sukses", donasi: { status: "NONE" } };
-    }
+    // Siapkan data dasar untuk dikirim
+    const adminData = {
+      email: "", // Kita akan ambil ini di bawah
+      namaSekolah: sessionData.namaSekolah
+    };
 
     // Jika tidak NONE, ambil detail lengkap dari Master Sheet
     const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
     const sheetSekolah = masterSS.getSheetByName('Sheet_Sekolah');
     const dataSekolah = sheetSekolah.getDataRange().getValues();
     
+    let donasiDetail = { status: "NONE" };
+
     for (let i = 1; i < dataSekolah.length; i++) {
       if (dataSekolah[i][0] === sessionData.sekolahID) {
-        const fileId = dataSekolah[i][9]; // Kolom J (FileID)
-        let fileUrl = null;
-        if (fileId) {
-          try {
-            // Buat link view sementara
-            const file = DriveApp.getFileById(fileId);
-            fileUrl = file.getDownloadUrl().replace("&export=download", ""); // Dapatkan link viewer
-          } catch (e) {
-            Logger.log("Gagal get file URL untuk donasi: " + e.message);
-          }
-        }
         
-        return { 
-          status: "sukses", 
-          donasi: {
-            status: dataSekolah[i][8],     // Kolom I
-            fileId: fileId,
-            fileUrl: fileUrl,
-            dataJson: dataSekolah[i][10],  // Kolom K
-            alasan: dataSekolah[i][11]   // Kolom L
-          }
-        };
+        adminData.email = dataSekolah[i][3]; // Ambil email dari Kolom D
+        
+        const donasiStatus = dataSekolah[i][8] || "NONE";
+        
+        if (donasiStatus !== "NONE") {
+            const fileId = dataSekolah[i][9]; // Kolom J (FileID)
+            let fileUrl = null;
+            if (fileId) {
+              try {
+                // Buat link view sementara
+                const file = DriveApp.getFileById(fileId);
+                fileUrl = file.getDownloadUrl().replace("&export=download", ""); // Dapatkan link viewer
+              } catch (e) {
+                Logger.log("Gagal get file URL untuk donasi: " + e.message);
+              }
+            }
+            
+            donasiDetail = {
+                status: donasiStatus,     // Kolom I
+                fileId: fileId,
+                fileUrl: fileUrl,
+                dataJson: dataSekolah[i][10],  // Kolom K
+                alasan: dataSekolah[i][11]   // Kolom L
+            };
+        }
+        break; // Hentikan loop setelah sekolah ditemukan
       }
     }
-    throw new Error("Data sekolah tidak ditemukan.");
+    
+    // Kembalikan kedua objek
+    return { status: "sukses", donasi: donasiDetail, admin: adminData };
+
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
