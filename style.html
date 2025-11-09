@@ -4269,7 +4269,12 @@
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    transition: background-color 0.2s;
+    
+    /* --- PERUBAHAN DI SINI --- */
+    transition: background-color 0.2s, opacity 0.3s ease; /* Tambahkan transisi opacity */
+    opacity: 1; /* Tentukan opacity default */
+    pointer-events: auto; /* Pastikan bisa diklik */
+    /* --- AKHIR PERUBAHAN --- */
   }
   .donasi-slider .swiper-button-next:hover,
   .donasi-slider .swiper-button-prev:hover {
@@ -4286,5 +4291,16 @@
   /* Mengganti warna titik-titik pagination */
   .donasi-slider .swiper-pagination-bullet-active {
     background: var(--primary-color) !important;
+  }
+
+  /* --- ============================================= --- */
+  /* ---      GAYA BARU UNTUK SEMBUNYIKAN NAV VIDEO    --- */
+  /* --- ============================================= --- */
+
+  /* Style untuk menyembunyikan nav saat video diputar */
+  .donasi-slider.video-is-playing .swiper-button-next,
+  .donasi-slider.video-is-playing .swiper-button-prev {
+    opacity: 0;
+    pointer-events: none;
   }
 </style>
