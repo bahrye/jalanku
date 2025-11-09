@@ -162,6 +162,7 @@
           <button class="dashboard-card" id="btn-buka-guru">
             <i class="fas fa-chalkboard-teacher"></i>
             <span>Kelola Data Guru</span>
+            <div class="premium-stamp" style="display: none;">Premium</div>
           </button>
           <button class="dashboard-card" id="btn-buka-siswa">
             <i class="fas fa-users"></i>
@@ -182,6 +183,10 @@
           <button class="dashboard-card" id="btn-buka-semester">
             <i class="fas fa-layer-group"></i>
             <span>Kelola Semester</span>
+          </button>
+          <button class="dashboard-card" id="btn-buka-donasi">
+            <i class="fas fa-hand-holding-heart"></i>
+            <span>Donasi Premium</span>
           </button>
         </div>
 
@@ -214,6 +219,7 @@
           <button class="dashboard-card" id="btn-buka-kelola-kelulusan">
             <i class="fas fa-bullhorn"></i>
             <span>Kelola Kelulusan</span>
+            <div class="premium-stamp" style="display: none;">Premium</div>
           </button>
         </div>
       </div>
@@ -1452,6 +1458,96 @@
       </div>
       <div id="kartu-container">
         </div>
+    </div>
+
+    <div class="container" id="halaman-donasi" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-dashboard-12"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
+        </div>
+
+        <div class="page-header">
+          <h2>Donasi Fitur Premium</h2>
+        </div>
+
+        <div id="donasi-state-form">
+          <p>Aktifkan fitur premium untuk membuka menu <strong>Kelola Data Guru</strong>, <strong>Login Guru</strong>, dan <strong>Cek Kelulusan Siswa</strong>.</p>
+          
+          <div class="video-container">
+            <iframe src="https://www.youtube.com/embed/your-video-id" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+          </div>
+          
+          <p style="margin-top: 20px;">Silakan lakukan donasi untuk pengembangan aplikasi, kemudian unggah bukti transfer Anda di bawah ini.</p>
+          
+          <form id="form-donasi" onsubmit="return false;">
+            <div class="form-group">
+              <label for="donasi-nama">Nama Donatur / Nama Sekolah (Wajib)</label>
+              <input type="text" id="donasi-nama" placeholder="Misal: Admin MI AL HUDA" required>
+            </div>
+            <div class="form-group">
+              <label for="donasi-jumlah">Jumlah Donasi (Wajib)</label>
+              <input type="number" id="donasi-jumlah" placeholder="Misal: 50000" inputmode="numeric" required>
+            </div>
+            
+            <div class="form-group">
+              <label for="donasi-file">Bukti Transfer (Wajib - Gambar/PDF)</label>
+              <label for="donasi-file" class="file-upload-zone" id="file-upload-zone-donasi">
+                <input type="file" id="donasi-file" accept="image/*,.pdf">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <span id="file-upload-text-donasi">Klik untuk memilih file...</span>
+              </label>
+            </div>
+
+            <p id="donasi-message" class="message" style="display: none;"></p>
+
+            <hr>
+            <div class="form-actions">
+                <button type="button" id="btn-kirim-donasi"><i class="fas fa-paper-plane"></i>Kirim Bukti Donasi</button>
+            </div>
+          </form>
+        </div>
+        
+        <div id="donasi-state-pending" style="display: none; text-align: center;">
+          <i class="fas fa-clock" style="font-size: 48px; color: var(--primary-color); margin-bottom: 20px;"></i>
+          <h3 style="margin-top: 0;">Donasi Anda Sedang Diverifikasi</h3>
+          <p>Terima kasih! Bukti donasi Anda telah terkirim. Superadmin akan segera melakukan verifikasi. (Biasanya 1x24 jam).</p>
+          <p id="donasi-pending-data" class="message" style="display: block; background-color: var(--bg-light); color: var(--text-dark); text-align: left;"></p>
+          <div class="form-actions" style="justify-content: center;">
+            <button id="btn-lihat-file-donasi" class="btn-aksi" style="background-color: var(--secondary-color);"><i class="fas fa-eye"></i>Lihat File</button>
+            <button id="btn-batalkan-donasi" class="btn-aksi" style="background-color: var(--danger-color);"><i class="fas fa-times"></i>Batalkan Donasi</button>
+          </div>
+        </div>
+
+        <div id="donasi-state-approved" style="display: none; text-align: center;">
+          <i class="fas fa-check-circle" style="font-size: 48px; color: var(--success-color); margin-bottom: 20px;"></i>
+          <h3 style="margin-top: 0;">Donasi Diterima!</h3>
+          <p>Verifikasi berhasil. <strong>Semua Fitur Premium telah aktif.</strong> Terima kasih atas dukungan Anda.</p>
+        </div>
+        
+        <div id="donasi-state-rejected" style="display: none; text-align: center;">
+          <i class="fas fa-times-circle" style="font-size: 48px; color: var(--danger-color); margin-bottom: 20px;"></i>
+          <h3 style="margin-top: 0;">Donasi Ditolak</h3>
+          <p>Maaf, verifikasi donasi Anda ditolak oleh Superadmin.</p>
+          <p id="donasi-rejected-reason" class="message error" style="display: block; text-align: left; font-weight: 500;"></p>
+          <p>Silakan perbaiki data/bukti transfer Anda dan kirim ulang melalui formulir di bawah ini.</p>
+        </div>
+
+      </div>
+    </div>
+    <div class="container" id="halaman-superadmin" style="display: none;">
+      <p>Anda login sebagai Superadmin. Anda dapat mengelola semua akun sekolah yang terdaftar di sistem.</p>
+        
+        <p id="superadmin-message" class="message" style="display: none;"></p>
+
+        <h3 class="form-section-header" style="color: #fd7e14;">Verifikasi Donasi Tertunda</h3>
+        <div class="superadmin-table-container" id="superadmin-donasi-list">
+          <p>Memuat donasi tertunda...</p>
+        </div>
+        <h3 class="form-section-header">Daftar Sekolah Terdaftar</h3>
+        <div class="superadmin-table-container" id="superadmin-sekolah-list">
+          <p>Memuat daftar sekolah...</p>
+        </div>
+      </div>
     </div>
 
     <canvas id="confetti-canvas" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10001; pointer-events: none;"></canvas>
