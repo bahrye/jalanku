@@ -350,6 +350,7 @@
   #btn-kembali-ke-dashboard-9,
   #btn-kembali-ke-dashboard-10,
   #btn-kembali-ke-dashboard-11,
+  #btn-kembali-ke-dashboard-12,
   #btn-kembali-ke-input-rapor,
   #btn-kembali-ke-input-rapor-2,
   #btn-kembali-ke-dashboard-guru {
@@ -376,6 +377,7 @@
   #btn-kembali-ke-dashboard-9:hover,
   #btn-kembali-ke-dashboard-10:hover,
   #btn-kembali-ke-dashboard-11:hover,
+  #btn-kembali-ke-dashboard-12:hover,
   #btn-kembali-ke-input-rapor:hover,
   #btn-kembali-ke-input-rapor-2:hover,
   #btn-kembali-ke-dashboard-guru:hover {
@@ -494,7 +496,8 @@
     #halaman-validasi-nilai,
     #halaman-superadmin,
     #halaman-kelola-kelulusan,
-    #halaman-guru {
+    #halaman-guru,
+    #halaman-donasi {
       max-width: 960px;
     }
 
@@ -2685,6 +2688,7 @@
   #btn-kembali-ke-dashboard-9,
   #btn-kembali-ke-dashboard-10,
   #btn-kembali-ke-dashboard-11,
+  #btn-kembali-ke-dashboard-12,
   #btn-kembali-ke-input-rapor,
   #btn-kembali-ke-input-rapor-2,
   #btn-kembali-ke-dashboard-guru {
@@ -2705,6 +2709,7 @@
   #btn-kembali-ke-dashboard-9 i,
   #btn-kembali-ke-dashboard-10 i,
   #btn-kembali-ke-dashboard-11 i,
+  #btn-kembali-ke-dashboard-12 i,
   #btn-kembali-ke-input-rapor i,
   #btn-kembali-ke-input-rapor-2 i {
       pointer-events: none;
@@ -3894,4 +3899,221 @@
     }
   }
 
+  /* === GAYA KARTU PREMIUM (GATING) === */
+  .dashboard-card {
+    position: relative; /* Diperlukan untuk stamp */
+    overflow: hidden;   /* Menyembunyikan sudut stamp */
+  }
+
+  /* Status Disabled untuk SEMUA kartu */
+  .dashboard-card:disabled,
+  .dashboard-card.card-disabled { /* Tambahkan kelas .card-disabled */
+    background-color: var(--bg-light) !important;
+    color: #aaa !important;
+    cursor: not-allowed;
+    box-shadow: none !important;
+    transform: none !important;
+    border-color: var(--border-color) !important;
+  }
+
+  .dashboard-card:disabled:hover,
+  .dashboard-card.card-disabled:hover {
+    background-color: var(--bg-light) !important;
+    color: #aaa !important;
+  }
+
+  /* Stamp "Premium" */
+  .premium-stamp {
+    position: absolute;
+    top: 10px;
+    right: -30px;
+    background-color: #fd7e14; /* Oranye */
+    color: white;
+    padding: 5px 30px;
+    font-size: 12px;
+    font-weight: 700;
+    transform: rotate(45deg);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    z-index: 2;
+    display: none; /* Sembunyi by default, JS akan menampilkan */
+  }
+
+  /* Tampilkan stamp jika kartu di-disable */
+  .dashboard-card.card-disabled .premium-stamp {
+    display: block;
+  }
+
+  /* Abu-abukan ikon dan teks saat disabled */
+  .dashboard-card.card-disabled i,
+  .dashboard-card.card-disabled span {
+    color: #aaa !important;
+    z-index: 1; /* Di bawah stamp */
+  }
+
+  /* --- GANTI SELURUH BLOK INI --- */
+
+  /* Override: Kembalikan warna asli untuk kartu Guru... */
+  #btn-buka-guru.card-disabled,
+  #btn-buka-guru:disabled { 
+    background-color: var(--bg-white) !important; 
+    color: #20c997 !important; 
+    /* opacity: 0.7; */ /* <-- HAPUS BARIS INI */
+    box-shadow: none !important;
+    transform: none !important;
+    cursor: not-allowed; 
+  }
+
+  /* --- TAMBAHKAN BLOK HOVER INI --- */
+  #btn-buka-guru.card-disabled:hover,
+  #btn-buka-guru:disabled:hover {
+    background-color: #20c997 !important; /* Warna solid hijau */
+    color: white !important;
+    opacity: 1; /* Opacity penuh saat hover */
+  }
+
+  #btn-buka-guru.card-disabled:hover i,
+  #btn-buka-guru:disabled:hover i,
+  #btn-buka-guru.card-disabled:hover span,
+  #btn-buka-guru:disabled:hover span {
+    color: white !important; /* Ikon & teks menjadi putih */
+  }
+  /* --- AKHIR BLOK BARU --- */
+
+  /* Override: Kembalikan warna asli untuk kartu Kelola Kelulusan */
+  #btn-buka-kelola-kelulusan.card-disabled,
+  #btn-buka-kelola-kelulusan:disabled {
+    background-color: var(--bg-white) !important;
+    color: #d63384 !important; /* Warna asli Kelola Kelulusan */
+    /* opacity: 0.7; */ /* <-- HAPUS BARIS INI */
+    box-shadow: none !important;
+    transform: none !important;
+    cursor: not-allowed;
+  }
+
+  /* --- TAMBAHKAN BLOK HOVER INI --- */
+  #btn-buka-kelola-kelulusan.card-disabled:hover,
+  #btn-buka-kelola-kelulusan:disabled:hover {
+    background-color: #d63384 !important; /* Warna solid pink/ungu */
+    color: white !important;
+    opacity: 1; /* Opacity penuh saat hover */
+  }
+
+  #btn-buka-kelola-kelulusan.card-disabled:hover i,
+  #btn-buka-kelola-kelulusan:disabled:hover i,
+  #btn-buka-kelola-kelulusan.card-disabled:hover span,
+  #btn-buka-kelola-kelulusan:disabled:hover span {
+    color: white !important; /* Ikon & teks menjadi putih */
+  }
+
+  /* === GAYA TAB LOGIN (GATING) === */
+  .auth-tabs .tab-link:disabled {
+    background-color: #e9ecef;
+    color: #aaa;
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+  .auth-tabs .tab-link:disabled:hover {
+    color: #aaa;
+    text-decoration: none;
+  }
+
+  /* === GAYA HALAMAN DONASI === */
+  #btn-buka-donasi { color: #198754; } /* Warna hijau */
+  #btn-buka-donasi:hover {
+    background-color: #198754 !important;
+    color: white !important;
+  }
+
+  .video-container {
+    position: relative;
+    padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
+    height: 0;
+    overflow: hidden;
+    max-width: 100%;
+    background: #000;
+    border-radius: 8px;
+    margin-top: 20px;
+  }
+  .video-container iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  #file-upload-zone-donasi {
+    padding: 20px; /* Lebih kecil */
+  }
+  #file-upload-zone-donasi i {
+    font-size: 28px;
+    margin-bottom: 10px;
+  }
+  #file-upload-zone-donasi span {
+    font-size: 14px;
+  }
+
+  #btn-kirim-donasi {
+    background-color: var(--success-color);
+  }
+  #btn-kirim-donasi:hover {
+    background-color: #157347;
+  }
+
+  #donasi-pending-data {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  #donasi-pending-data strong {
+    color: var(--text-dark);
+  }
+
+  /* === GAYA SUPERADMIN DONASI === */
+  #superadmin-donasi-list {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 15px;
+    margin-bottom: 20px;
+  }
+
+  .donasi-card {
+    background: #fff8e1;
+    border: 1px solid #ffe6b0;
+    border-radius: 8px;
+    padding: 20px;
+  }
+  .donasi-card h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 18px;
+    color: #664d03;
+  }
+  .donasi-card p {
+    font-size: 14px;
+    margin: 5px 0;
+  }
+  .donasi-card p strong {
+    color: var(--text-dark);
+  }
+  .donasi-card-actions {
+    margin-top: 15px;
+    display: flex;
+    gap: 10px;
+  }
+  .donasi-card-actions .btn-aksi {
+    flex-grow: 1; /* Tombol jadi sama besar */
+    padding: 10px;
+    font-size: 14px;
+  }
+  .btn-donasi-setujui {
+    background-color: var(--success-color);
+  }
+  .btn-donasi-tolak {
+    background-color: var(--danger-color);
+  }
+  .btn-donasi-lihat {
+    background-color: var(--secondary-color);
+    flex-grow: 0; /* Tombol lihat tidak perlu full width */
+    font-weight: 500;
+  }
 </style>
