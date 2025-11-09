@@ -90,6 +90,10 @@
   let guruTelahDiImport = false;
   let globalSiswaList = [];
   let isSiswaOrderDirty = false;
+  // --- TAMBAHKAN INI ---
+  let globalDonasiStatus = 'NONE';
+  let globalDonasiDetail = {}; // Cache untuk detail (file url, alasan)
+  // --- AKHIR TAMBAHAN ---
   let isMapelTipeDirty = false;
   let globalMapelList = [];
   let isMapelOrderDirty = false;
@@ -561,7 +565,7 @@
       'halaman-nilai-ijazah', 'halaman-validasi-nilai',
       'halaman-superadmin',
       'halaman-kelola-kelulusan', 'halaman-hasil-siswa',
-      'halaman-guru'
+      'halaman-guru', 'halaman-donasi'
     ];
     
     const authSubPages = [
@@ -1107,6 +1111,39 @@
         .withFailureHandler(onGagal)
         .superadminReturn(getToken());
     });
+
+    // --- TAMBAHKAN BLOK BARU INI ---
+    document.getElementById('btn-buka-donasi').addEventListener('click', () => {
+      handleNavigationConfirm(bukaHalamanDonasi);
+    });
+    document.getElementById('btn-kembali-ke-dashboard-12').addEventListener('click', () => {
+      handleNavigationConfirm(() => tampilHalaman('halaman-utama'));
+    });
+    document.getElementById('btn-kirim-donasi').addEventListener('click', submitDonasiForm);
+    document.getElementById('btn-batalkan-donasi').addEventListener('click', konfirmasiBatalkanDonasi);
+    document.getElementById('btn-lihat-file-donasi').addEventListener('click', () => {
+      if (globalDonasiDetail.fileUrl) {
+        window.open(globalDonasiDetail.fileUrl, '_blank');
+      } else {
+        showToast("Link file tidak ditemukan.", 'gagal');
+      }
+    });
+
+    // Listener dinamis untuk tombol verifikasi Superadmin
+    document.getElementById('superadmin-donasi-list').addEventListener('click', (e) => {
+      const target = e.target.closest('button');
+      if (!target) return;
+      
+      const sekolahID = target.dataset.id;
+      if (target.classList.contains('btn-donasi-setujui')) {
+        handleDonasiVerify(sekolahID, true);
+      } else if (target.classList.contains('btn-donasi-tolak')) {
+        handleDonasiVerify(sekolahID, false);
+      } else if (target.classList.contains('btn-donasi-lihat')) {
+        window.open(target.dataset.url, '_blank');
+      }
+    });
+    // --- AKHIR BLOK BARU ---
 
     document.getElementById('link-ke-registrasi').addEventListener('click', (e) => {
       e.preventDefault();
@@ -2208,6 +2245,11 @@
         document.getElementById('btn-kembali-ke-superadmin').style.display = 'inline-flex';
       }
 
+      // --- TAMBAHKAN 2 BARIS INI ---
+      globalDonasiStatus = response.donasiStatus || "NONE";
+      updatePremiumFeatures(globalDonasiStatus);
+      // --- AKHIR TAMBAHAN ---
+
       if (lastPageId && lastPageId !== 'halaman-superadmin' && lastPageId !== 'halaman-login' && lastPageId !== 'halaman-login-guru') {
         bukaHalamanTersimpan(lastPageId);
       } else {
@@ -2259,6 +2301,11 @@
           isImpersonatingCache = true;
           document.getElementById('btn-kembali-ke-superadmin').style.display = 'inline-flex';
         }
+
+        // --- TAMBAHKAN 2 BARIS INI ---
+        globalDonasiStatus = response.donasiStatus || "NONE";
+        updatePremiumFeatures(globalDonasiStatus);
+        // --- AKHIR TAMBAHAN ---
 
         tampilHalaman('halaman-utama');
 
@@ -5901,10 +5948,20 @@ function populateSiswaFilters() {
     tampilHalaman('halaman-login');
   }
 
+  // Di dalam client.html
   function bukaHalamanSuperadmin() {
     tampilHalaman('halaman-superadmin');
     setLoading(true, 'Memuat daftar sekolah...', false, false);
     document.getElementById('superadmin-sekolah-list').innerHTML = "<p>Memuat...</p>";
+    
+    // --- TAMBAHKAN BLOK INI ---
+    document.getElementById('superadmin-donasi-list').innerHTML = "<p>Memuat...</p>";
+    google.script.run
+      .withSuccessHandler(renderDonasiList)
+      .withFailureHandler(onGagal)
+      .getDonasiList(getToken());
+    // --- AKHIR TAMBAHAN ---
+      
     google.script.run.withSuccessHandler(onSekolahListLoaded).withFailureHandler(onGagal).getSekolahList(getToken());
   }
 
@@ -7689,6 +7746,284 @@ function populateSiswaFilters() {
     }, 50); 
     
     showToast(`Berhasil membuat ${cardData.length} kartu. Semua password guru telah direset.`, 'sukses');
+  }
+
+  function updatePremiumFeatures(status) {
+    const isPremium = (status === "APPROVED");
+    
+    const btnGuru = document.getElementById('btn-buka-guru');
+    const tabGuru = document.getElementById('tab-btn-guru');
+    const tabSiswa = document.getElementById('tab-btn-siswa');
+    const btnKelulusan = document.getElementById('btn-buka-kelola-kelulusan'); // <-- TAMBAHKAN INI
+    
+    if (btnGuru) {
+      const stamp = btnGuru.querySelector('.premium-stamp');
+      if (isPremium) {
+        btnGuru.classList.remove('card-disabled');
+        btnGuru.disabled = false;
+        if (stamp) stamp.style.display = 'none';
+      } else {
+        btnGuru.classList.add('card-disabled');
+        btnGuru.disabled = true;
+        if (stamp) stamp.style.display = 'block';
+      }
+    }
+    
+    // --- TAMBAHKAN BLOK BARU DI BAWAH INI ---
+    if (btnKelulusan) {
+      const stamp = btnKelulusan.querySelector('.premium-stamp');
+      if (isPremium) {
+        btnKelulusan.classList.remove('card-disabled');
+        btnKelulusan.disabled = false;
+        if (stamp) stamp.style.display = 'none';
+      } else {
+        btnKelulusan.classList.add('card-disabled');
+        btnKelulusan.disabled = true;
+        if (stamp) stamp.style.display = 'block';
+      }
+    }
+    // --- AKHIR BLOK BARU ---
+    
+    if (tabGuru) {
+      tabGuru.disabled = !isPremium;
+      tabGuru.title = isPremium ? "Login sebagai Guru" : "Fitur Premium - Donasi untuk aktivasi";
+    }
+    
+    if (tabSiswa) {
+      tabSiswa.disabled = !isPremium;
+      tabSiswa.title = isPremium ? "Cek Kelulusan Siswa" : "Fitur Premium - Donasi untuk aktivasi";
+    }
+  }
+
+  /**
+   * [BARU] Membuka halaman donasi dan menampilkan state yang sesuai.
+   */
+  function bukaHalamanDonasi() {
+    tampilHalaman('halaman-donasi');
+    
+    // Sembunyikan semua state
+    document.getElementById('donasi-state-form').style.display = 'none';
+    document.getElementById('donasi-state-pending').style.display = 'none';
+    document.getElementById('donasi-state-approved').style.display = 'none';
+    document.getElementById('donasi-state-rejected').style.display = 'none';
+    hideMessage('donasi-message');
+    
+    // Reset form
+    document.getElementById('form-donasi').reset();
+    const fileUploadText = document.getElementById('file-upload-text-donasi');
+    fileUploadText.innerText = 'Klik untuk memilih file...';
+    fileUploadText.classList.remove('file-chosen');
+
+    // Panggil server untuk data terbaru (termasuk URL file / alasan)
+    setLoading(true, 'Memeriksa status donasi...', false);
+    google.script.run
+      .withSuccessHandler(onDonasiStatusLoaded)
+      .withFailureHandler(onGagal)
+      .getDonasiStatusDetail(getToken());
+  }
+
+  /**
+   * [BARU] Callback setelah status donasi detail dimuat.
+   */
+  function onDonasiStatusLoaded(response) {
+    setLoading(false);
+    if (response.status !== 'sukses') {
+      showToast(response.message, 'gagal');
+      document.getElementById('donasi-state-form').style.display = 'block';
+      return;
+    }
+    
+    const donasi = response.donasi;
+    globalDonasiStatus = donasi.status;
+    globalDonasiDetail = donasi; // Simpan detail (fileUrl, alasan, dll)
+
+    if (donasi.status === 'PENDING') {
+      document.getElementById('donasi-state-pending').style.display = 'block';
+      let dataHtml = "Data donasi tidak ada.";
+      if (donasi.dataJson) {
+        try {
+          const data = JSON.parse(donasi.dataJson);
+          dataHtml = `<strong>Nama:</strong> ${data.nama}<br><strong>Jumlah:</strong> ${data.jumlah}`;
+        } catch(e) {}
+      }
+      document.getElementById('donasi-pending-data').innerHTML = dataHtml;
+      
+    } else if (donasi.status === 'APPROVED') {
+      document.getElementById('donasi-state-approved').style.display = 'block';
+      
+    } else if (donasi.status === 'REJECTED') {
+      document.getElementById('donasi-state-rejected').style.display = 'block';
+      document.getElementById('donasi-rejected-reason').innerText = `Alasan: ${donasi.alasan || "Tidak ada alasan."}`;
+      // Tampilkan form di bawah pesan reject
+      document.getElementById('donasi-state-form').style.display = 'block'; 
+      
+    } else { // 'NONE'
+      document.getElementById('donasi-state-form').style.display = 'block';
+    }
+    
+    // Panggil lagi untuk memastikan UI dashboard (jika ada) sinkron
+    updatePremiumFeatures(globalDonasiStatus);
+  }
+
+  /**
+   * [BARU] Mengirimkan form donasi.
+   */
+  function submitDonasiForm() {
+    hideMessage('donasi-message');
+    const nama = document.getElementById('donasi-nama').value.trim();
+    const jumlah = document.getElementById('donasi-jumlah').value;
+    const fileInput = document.getElementById('donasi-file');
+    const file = fileInput.files[0];
+    
+    if (!nama || !jumlah) {
+      showMessage('donasi-message', 'Nama dan Jumlah donasi wajib diisi.', true);
+      return;
+    }
+    if (!file) {
+      showMessage('donasi-message', 'Bukti transfer (file) wajib diunggah.', true);
+      return;
+    }
+    
+    setButtonLoading(document.getElementById('btn-kirim-donasi'), 'Mengunggah file...');
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const fileData = { 
+        base64: e.target.result, 
+        mimeType: file.type, 
+        fileName: file.name 
+      };
+      const formDataJSON = JSON.stringify({
+        nama: nama,
+        jumlah: jumlah
+      });
+      
+      google.script.run
+        .withSuccessHandler(onDonasiSelesai)
+        .withFailureHandler(onGagalKirimDonasi)
+        .submitDonasi(getToken(), fileData, formDataJSON);
+    };
+    reader.onerror = (e) => {
+      onGagalKirimDonasi({ message: 'Gagal membaca file.' });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function onDonasiSelesai(response) {
+    resetButtonLoading(document.getElementById('btn-kirim-donasi'));
+    if (response.status === 'sukses') {
+      globalDonasiStatus = response.donasiStatus;
+      bukaHalamanDonasi(); // Muat ulang halaman untuk tampilkan status PENDING
+      showToast("Bukti donasi berhasil dikirim!", 'sukses');
+    } else {
+      onGagalKirimDonasi(response);
+    }
+  }
+
+  function onGagalKirimDonasi(error) {
+    resetButtonLoading(document.getElementById('btn-kirim-donasi'));
+    showMessage('donasi-message', error.message, true);
+  }
+
+  /**
+   * [BARU] Konfirmasi pembatalan donasi.
+   */
+  function konfirmasiBatalkanDonasi() {
+    const title = "Batalkan Donasi";
+    const message = "Anda yakin ingin membatalkan pengajuan donasi ini? Bukti transfer Anda akan dihapus.";
+    const callback = function() {
+      setLoading(true, 'Membatalkan...');
+      google.script.run
+        .withSuccessHandler(onDonasiDibatalkan)
+        .withFailureHandler(onGagal)
+        .batalkanDonasi(getToken());
+    };
+    showConfirmationModal(title, message, callback, 'danger');
+  }
+
+  function onDonasiDibatalkan(response) {
+    setLoading(false);
+    if (response.status === 'sukses') {
+      globalDonasiStatus = response.donasiStatus;
+      bukaHalamanDonasi(); // Muat ulang halaman (akan kembali ke form)
+      showToast("Donasi dibatalkan.", 'sukses');
+    } else {
+      onGagal(response);
+    }
+  }
+
+  /**
+   * [BARU] Merender daftar donasi pending untuk Superadmin.
+   */
+  function renderDonasiList(response) {
+    const container = document.getElementById('superadmin-donasi-list');
+    if (response.status !== 'sukses') {
+      container.innerHTML = `<p class="message error" style="display:block;">Gagal memuat donasi: ${response.message}</p>`;
+      return;
+    }
+    
+    const list = response.pendingList;
+    if (list.length === 0) {
+      container.innerHTML = '<p style="text-align: center; padding: 15px 0; color: var(--text-light);">Tidak ada donasi yang menunggu verifikasi.</p>';
+      return;
+    }
+    
+    let html = '';
+    list.forEach(item => {
+      let dataHtml = "Tidak ada data.";
+      if (item.dataJson) {
+        try {
+          const data = JSON.parse(item.dataJson);
+          dataHtml = `<strong>Nama:</strong> ${data.nama || 'N/A'} | <strong>Jumlah:</strong> ${data.jumlah || 'N/A'}`;
+        } catch(e) {}
+      }
+      
+      html += `
+        <div class="donasi-card">
+          <h4>${item.namaSekolah}</h4>
+          <p>${dataHtml}</p>
+          <div class="donasi-card-actions">
+            <button class="btn-aksi btn-donasi-lihat" data-url="${item.fileUrl || '#'}"><i class="fas fa-search"></i>Lihat Bukti</button>
+            <button class="btn-aksi btn-donasi-tolak" data-id="${item.sekolahID}"><i class="fas fa-times"></i>Tolak</button>
+            <button class="btn-aksi btn-donasi-setujui" data-id="${item.sekolahID}"><i class="fas fa-check"></i>Setujui</button>
+          </div>
+        </div>
+      `;
+    });
+    container.innerHTML = html;
+  }
+
+  /**
+   * [BARU] Handler untuk tombol Setujui/Tolak Superadmin.
+   */
+  function handleDonasiVerify(sekolahID, isApproved) {
+    let alasan = "";
+    if (!isApproved) {
+      alasan = prompt("Harap masukkan alasan penolakan (akan dilihat oleh admin sekolah):");
+      if (alasan === null) return; // Dibatalkan
+      if (alasan.trim() === "") {
+        showToast("Alasan tidak boleh kosong.", 'gagal');
+        return;
+      }
+    }
+    
+    const actionText = isApproved ? 'Menyetujui' : 'Menolak';
+    setLoading(true, `${actionText} donasi...`);
+    
+    google.script.run
+      .withSuccessHandler(onDonasiDiverifikasi)
+      .withFailureHandler(onGagal)
+      .verifikasiDonasi(getToken(), sekolahID, isApproved, alasan);
+  }
+
+  function onDonasiDiverifikasi(response) {
+    setLoading(false);
+    if (response.status === 'sukses') {
+      showToast(response.message, 'sukses');
+      bukaHalamanSuperadmin(); // Muat ulang daftar donasi dan sekolah
+    } else {
+      onGagal(response);
+    }
   }
 
 </script>
