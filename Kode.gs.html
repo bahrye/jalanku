@@ -4920,3 +4920,91 @@ function generateGuruLoginCards(token) {
     lock.releaseLock();
   }
 }
+
+/**
+ * [ADMIN] Menyinkronkan data MapelKelasJSON semua guru ke ["*"] (Semua Kelas).
+ * Hanya berjalan jika total kelas di sekolah = 1.
+ */
+function syncGuruClassesToSingleClass(token) {
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(15000);
+  
+  try {
+    const { spreadsheetID } = validateAdminSession(token);
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    
+    // 1. Validasi bahwa hanya ada 1 kelas
+    const sheetKelas = getKelasSheet(ss);
+    const totalKelas = sheetKelas.getLastRow() - 1; // Kurangi header
+    if (totalKelas !== 1) {
+      throw new Error(`Fitur ini hanya dapat digunakan jika Anda memiliki TEPAT SATU kelas terdaftar. (Terdeteksi: ${totalKelas} kelas)`);
+    }
+
+    // 2. Proses sheet Guru
+    const sheetGuru = getGuruSheet(ss);
+    if (sheetGuru.getLastRow() <= 1) {
+      return { status: "sukses", message: "Tidak ada data guru untuk disinkronkan." };
+    }
+
+    const dataRange = sheetGuru.getRange(2, 1, sheetGuru.getLastRow() - 1, 5); // Kolom A sampai E
+    const values = dataRange.getValues();
+    
+    let changesMade = 0;
+    let newJsonValues = []; // Array untuk menampung JSON baru
+
+    for (let i = 0; i < values.length; i++) {
+      const mapelKelasJSON = values[i][4]; // Kolom E
+      
+      if (!mapelKelasJSON) {
+        newJsonValues.push([null]); // Jika kosong, biarkan kosong
+        continue;
+      }
+
+      try {
+        const mapelData = JSON.parse(mapelKelasJSON);
+        const mapelKeys = Object.keys(mapelData);
+
+        if (mapelKeys.length === 0) {
+          newJsonValues.push([mapelKelasJSON]); // Jika JSON kosong, biarkan
+          continue;
+        }
+
+        let needsSync = false;
+        const newData = {};
+
+        // Buat ulang data baru
+        for (const key of mapelKeys) {
+          newData[key] = ["*"]; // Atur ke "Semua Kelas"
+          
+          // Cek apakah data lama "kotor"
+          const val = mapelData[key];
+          if (!Array.isArray(val) || val.length !== 1 || val[0] !== "*") {
+            needsSync = true; // Tandai jika datanya BUKAN ["*"]
+          }
+        }
+
+        if (needsSync) {
+          changesMade++;
+          newJsonValues.push([JSON.stringify(newData)]); // Simpan JSON baru
+        } else {
+          newJsonValues.push([mapelKelasJSON]); // Data sudah bersih, simpan yang lama
+        }
+        
+      } catch (e) {
+        newJsonValues.push([mapelKelasJSON]); // Gagal parse, biarkan data aslinya
+      }
+    }
+
+    // 3. Tulis kembali data JSON yang sudah bersih secara batch
+    if (changesMade > 0) {
+      sheetGuru.getRange(2, 5, newJsonValues.length, 1).setValues(newJsonValues);
+    }
+    
+    return { status: "sukses", message: `Sinkronisasi selesai. ${changesMade} data guru diperbarui.` };
+
+  } catch (e) {
+    return { status: "gagal", message: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
