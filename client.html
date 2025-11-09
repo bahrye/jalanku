@@ -1046,6 +1046,12 @@
       }
     });
 
+    // TAMBAHKAN LISTENER BARU DI SINI
+    document.getElementById('btn-sync-guru-kelas').addEventListener('click', konfirmasiSyncGuruKelas);
+
+    // --- TAMBAHAN BARU: Listener untuk Cetak Kartu ---
+    document.getElementById('btn-cetak-kartu-guru').addEventListener('click', konfirmasiCetakKartu);
+
     // --- ============================================= ---
     // --- ===== LISTENER BARU UNTUK UI MULTI-KELAS ==== ---
     // --- ============================================= ---
@@ -6754,6 +6760,7 @@ function populateSiswaFilters() {
   let globalKelasListCache = []; // Cache untuk daftar kelas
   // --- AKHIR TAMBAHAN ---
 
+  // Di dalam client.html
   function bukaHalamanGuru() {
     tampilHalaman('halaman-guru');
     
@@ -6762,55 +6769,99 @@ function populateSiswaFilters() {
     document.getElementById('guru-table-container').innerHTML = '<p>Memuat data guru...</p>';
     document.getElementById('btn-tambah-guru-baru').disabled = true;
     document.getElementById('btn-import-guru').disabled = true;
+    document.getElementById('btn-cetak-kartu-guru').disabled = true;
+    document.getElementById('btn-sync-guru-kelas').disabled = true; // <-- TAMBAHKAN INI
+    document.getElementById('btn-sync-guru-kelas').style.display = 'none'; // <-- TAMBAHKAN INI
     document.getElementById('btn-simpan-pengaturan-guru').disabled = true;
     const containerTanggal = document.getElementById('container-tanggal-input-guru');
     if (containerTanggal) containerTanggal.style.display = 'none';
     hideMessage('pengaturan-guru-message');
     
-    // 1. Panggil data Guru (tabel)
-    google.script.run
-      .withSuccessHandler(onGuruLoaded)
-      .withFailureHandler(onGagal)
-      .getGuru(getToken());
-      
-    // 2. Panggil data Pengaturan (form)
+    // 1. Panggil data Pengaturan (paralel)
     google.script.run
       .withSuccessHandler(onPengaturanGuruLoaded)
       .withFailureHandler(onGagal) 
       .getPengaturanGuru(getToken());
 
-    // --- TAMBAHAN BARU: Panggil data Kelas untuk modal ---
-    // Reset cache kelas
+    // 2. Reset cache kelas dan panggil getKelas DULU.
+    //    Callback-nya (onKelasLoadedForGuruPage) akan memanggil getGuru.
     globalKelasListCache = [];
     google.script.run
-      .withSuccessHandler((response) => {
-        if (response.status === 'sukses') {
-          // Simpan daftar kelas (objek {nama, isLocked})
-          globalKelasListCache = response.kelasList;
-        } else {
-          // Jika gagal, onGagal akan menanganinya
-          onGagal(response); 
-        }
-      })
-      .withFailureHandler(onGagal)
+      .withSuccessHandler(onKelasLoadedForGuruPage) // <-- Panggil callback baru
+      .withFailureHandler(onGagal) // onGagal akan menghentikan loading
       .getKelas(getToken());
-    // --- AKHIR TAMBAHAN ---
+  }
+
+  /**
+   * [BARU] Callback setelah kelas dimuat, SEBELUM memuat guru.
+   */
+  function onKelasLoadedForGuruPage(response) {
+    if (response.status === 'sukses') {
+      globalKelasListCache = response.kelasList;
+      
+      // 3. Setelah kelas dimuat, SEKARANG panggil getGuru
+      google.script.run
+        .withSuccessHandler(onGuruLoaded)
+        .withFailureHandler(onGagal)
+        .getGuru(getToken());
+        
+    } else {
+      // Gagal memuat kelas. Ini fatal. Hentikan loading dan tampilkan error.
+      globalKelasListCache = [];
+      onGagal(response); // Biarkan onGagal mematikan loading
+    }
   }
 
   let globalGuruList = []; // Cache lokal untuk data guru
 
+  // Di dalam client.html
   function onGuruLoaded(response) {
     setLoading(false);
 
-    // Aktifkan kembali tombol
     document.getElementById('btn-tambah-guru-baru').disabled = false;
     document.getElementById('btn-import-guru').disabled = false;
+    document.getElementById('btn-cetak-kartu-guru').disabled = false;
+    document.getElementById('btn-sync-guru-kelas').disabled = false; // <-- AKTIFKAN TOMBOL (meski masih tersembunyi)
 
     if (response.status === 'sukses') {
-       globalGuruList = response.guru;
-       renderGuruTable(globalGuruList);
+      globalGuruList = response.guru;
+      renderGuruTable(globalGuruList);
+      
+      // --- TAMBAHKAN BLOK LOGIKA BARU DI BAWAH INI ---
+      try {
+        const totalKelasCount = globalKelasListCache.length;
+        let isDataDirty = false;
+        
+        // KONDISI 1: Hanya ada 1 kelas
+        if (totalKelasCount === 1) { 
+          for (const guru of globalGuruList) {
+            const mapelData = guru.mapelKelas || {};
+            for (const mapelId in mapelData) {
+              const kelasArray = mapelData[mapelId];
+              // KONDISI 2: Cek apakah datanya "kotor" (BUKAN ["*"])
+              if (!Array.isArray(kelasArray) || kelasArray.length !== 1 || kelasArray[0] !== "*") {
+                isDataDirty = true;
+                break;
+              }
+            }
+            if (isDataDirty) break;
+          }
+        }
+        
+        // Tampilkan tombol HANYA jika kedua kondisi terpenuhi
+        if (isDataDirty) {
+          document.getElementById('btn-sync-guru-kelas').style.display = 'inline-flex';
+        } else {
+          document.getElementById('btn-sync-guru-kelas').style.display = 'none';
+        }
+      } catch (e) {
+        console.error("Gagal memeriksa status sync guru:", e);
+        document.getElementById('btn-sync-guru-kelas').style.display = 'none';
+      }
+      // --- AKHIR BLOK LOGIKA BARU ---
+      
     } else {
-       document.getElementById('guru-table-container').innerHTML = `<p class="message error" style="display:block;">${response.message}</p>`;
+      document.getElementById('guru-table-container').innerHTML = `<p class="message error" style="display:block;">${response.message}</p>`;
     }
   }
 
@@ -6888,6 +6939,7 @@ function populateSiswaFilters() {
     }
   }
 
+  // Di dalam client.html
   function renderGuruTable(guruList) {
     const container = document.getElementById('guru-table-container');
     if (!guruList || guruList.length === 0) {
@@ -6895,35 +6947,64 @@ function populateSiswaFilters() {
       return;
     }
 
+    // --- LOGIKA BARU DIMULAI DI SINI ---
+    // Ambil data kelas yang valid dari cache yang sudah kita muat
+    const validKelasNames = globalKelasListCache.map(k => k.nama);
+    const totalKelasCount = globalKelasListCache.length;
+    // --- LOGIKA BARU BERAKHIR DI SINI ---
+
     let html = '<table class="siswa-table guru-table">';
     html += '<thead><tr><th>Nama Guru</th><th>Email Login</th><th>Mapel Diampu</th><th>Aksi</th></tr></thead>';
     html += '<tbody>';
     
     guruList.forEach(guru => {
       
-      // --- PERBAIKAN LOGIKA TAMPILAN MAPEL ---
       const mapelKelasData = guru.mapelKelas || {};
       const mapelEntries = Object.entries(mapelKelasData);
 
       let mapelBadges = '';
       if (mapelEntries.length > 0) {
         mapelBadges = mapelEntries.map(([mapelId, kelasArray]) => {
-          let kelasStr = '(Semua Kelas)';
-          if (Array.isArray(kelasArray) && !kelasArray.includes('*')) {
-            kelasStr = `(${kelasArray.join(', ')})`;
+          
+          // --- LOGIKA VALIDASI KELAS YANG DIPERBARUI ---
+          let kelasStr = '';
+          
+          if (totalKelasCount <= 1) {
+            // KASUS 1: Hanya ada 1 (atau 0) kelas. Selalu tampilkan "Semua Kelas"
+            // Ini menyelesaikan skenario Anda (dari 2 kelas jadi 1).
+            kelasStr = '(Semua Kelas)';
+          } else {
+            // KASUS 2: Ada lebih dari 1 kelas.
+            if (Array.isArray(kelasArray) && kelasArray.includes('*')) {
+              kelasStr = '(Semua Kelas)';
+            } else if (Array.isArray(kelasArray)) {
+              // Filter kelas yang disimpan vs kelas yang valid
+              const validStoredKelas = kelasArray.filter(k => validKelasNames.includes(k));
+              
+              if (validStoredKelas.length === 0) {
+                // Jika guru diatur ke kelas yg sudah dihapus (misal "9C")
+                kelasStr = '<i style="opacity: 0.7;">(Kelas Dihapus)</i>';
+              } else {
+                // Tampilkan hanya kelas yang masih ada
+                kelasStr = `(${validStoredKelas.join(', ')})`;
+              }
+            } else {
+              kelasStr = '<i style="opacity: 0.7;">(Data Lama)</i>'; // Fallback jika data rusak
+            }
           }
+          // --- AKHIR LOGIKA VALIDASI ---
+
           return `<span class="selected-mapel-tag" style="margin: 2px;">${mapelId} <i style="opacity: 0.7; margin-left: 5px;">${kelasStr}</i></span>`;
+        
         }).join('');
       } else {
         mapelBadges = '<span style="color: var(--text-light); font-style: italic;">Belum ada mapel</span>';
       }
-      // --- AKHIR PERBAIKAN ---
 
-      // PERBAIKAN: Kirim 'guru.mapelKelas' (objek) bukan 'guru' (string)
       const guruDataJson = JSON.stringify({
           email: guru.email,
           nama: guru.nama,
-          mapelKelas: guru.mapelKelas // Kirim objek
+          mapelKelas: guru.mapelKelas 
       }).replace(/"/g, '&quot;');
 
       html += `
@@ -6932,14 +7013,14 @@ function populateSiswaFilters() {
           <td>${guru.email}</td>
           <td>${mapelBadges}</td>
           <td>
-             <div class="btn-grup-aksi">
+            <div class="btn-grup-aksi">
                   <button class="btn-aksi btn-edit btn-edit-guru" data-guru="${guruDataJson}">
                     <i class="fas fa-pencil-alt"></i> Edit
                   </button>
                   <button class="btn-aksi btn-delete btn-delete-guru" data-email="${guru.email}" data-nama="${guru.nama}">
                     <i class="fas fa-trash-alt"></i> Hapus
                   </button>
-             </div>
+            </div>
           </td>
         </tr>
       `;
@@ -7130,6 +7211,43 @@ function populateSiswaFilters() {
               .deleteGuru(getToken(), email);
       };
       showConfirmationModal(title, message, callback, 'danger');
+  }
+
+  // Di dalam client.html (FUNGSI BARU)
+
+  /**
+   * [BARU] Menampilkan konfirmasi sebelum sinkronisasi kelas guru.
+   */
+  function konfirmasiSyncGuruKelas() {
+    const title = "Sinkronkan Kelas Guru";
+    const message = "Ini akan mengatur ulang semua mapel guru agar mengajar di 'Semua Kelas' (karena Anda hanya memiliki 1 kelas terdaftar). Ini akan membersihkan data kelas lama yang mungkin tersisa. Lanjutkan?";
+    const callback = function() {
+      setLoading(true, 'Menyinkronkan data guru...');
+      // Sembunyikan tombolnya langsung agar tidak diklik dua kali
+      document.getElementById('btn-sync-guru-kelas').style.display = 'none';
+      
+      google.script.run
+        .withSuccessHandler(onSyncGuruKelasSelesai)
+        .withFailureHandler(onGagal)
+        .syncGuruClassesToSingleClass(getToken());
+    };
+    showConfirmationModal(title, message, callback, 'primary');
+  }
+
+  /**
+   * [BARU] Callback setelah sinkronisasi kelas guru selesai.
+   */
+  function onSyncGuruKelasSelesai(response) {
+    setLoading(false);
+    if (response.status === 'sukses') {
+      // Muat ulang halaman guru (data akan bersih, tombol akan otomatis hilang)
+      bukaHalamanGuru();
+      showToast(response.message, 'sukses');
+    } else {
+      // Gagal, tampilkan pesan error
+      // (Tombol akan muncul lagi saat bukaHalamanGuru() dipanggil berikutnya jika masih dirty)
+      showMessage('pengaturan-guru-message', response.message, true);
+    }
   }
 
   function getSelectedMapelIds() {
