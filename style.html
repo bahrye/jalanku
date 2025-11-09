@@ -523,7 +523,8 @@
   #btn-hapus-semua-siswa,
   #btn-import-siswa,
   #btn-tambah-guru-baru,
-  #btn-import-guru {
+  #btn-import-guru,
+  #btn-cetak-kartu-guru {
     width: auto;
     padding: 10px 15px;
     font-size: 14px;
@@ -2455,30 +2456,32 @@
   /* Efek 'Dirty' untuk Tombol Kalkulasi Ulang */
   @keyframes pulse-animation {
     0% {
-      /* Mengganti warna pulse dari oranye ke hijau (var(--success-color)) */
-      box-shadow: 0 0 0 0 rgba(25, 135, 84, 0.7);
+      /* WARNA DIUBAH MENJADI MERAH (DANGER) */
+      box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
     }
     70% {
-      box-shadow: 0 0 0 10px rgba(25, 135, 84, 0);
+      box-shadow: 0 0 0 10px rgba(220, 53, 69, 0);
     }
     100% {
-      box-shadow: 0 0 0 0 rgba(25, 135, 84, 0);
+      box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
     }
   }
 
   /* Tombol Hitung Ulang di halaman Ijazah */
   #btn-recalculate-ijazah.btn-dirty-state {
-    /* Mengganti warna tombol dari oranye ke hijau */
-    background-color: var(--success-color) !important; /* Warna hijau */
+    /* Mengganti warna tombol menjadi merah (danger) */
+    background-color: var(--danger-color) !important; /* Warna merah */
     animation: pulse-animation 2s infinite;
-    border: 1px solid #157347; /* Border hijau tua */
+    border: 1px solid #b02a37; /* Border merah tua */
   }
 
   /* Tombol Menu "Nilai Ijazah" di Dashboard */
   #btn-buka-nilai-ijazah.btn-dirty-state {
-    animation: pulse-animation 2s infinite;
-    /* Mengganti warna border dari oranye ke hijau */
-    border: 2px solid var(--success-color);
+    /* Ganti ke animasi DENYUT */
+    animation: throb-warning-animation 1.5s ease-in-out infinite; 
+    border-width: 2px; /* Pastikan border 2px */
+    border-style: solid;
+    /* border-color dan box-shadow sekarang dikontrol oleh animasi */
   }
 
   /* Teks Pengingat Update */
@@ -2488,7 +2491,7 @@
     margin-right: 15px;
     font-size: 15px;
     font-weight: 700;
-    color: var(--success-color);
+    color: var(--danger-color); /* <-- DIUBAH */
     animation: text-glow-animation 1.5s infinite;
   }
 
@@ -2496,11 +2499,33 @@
   @keyframes text-glow-animation {
     0%, 100% {
       opacity: 1;
-      text-shadow: 0 0 5px rgba(25, 135, 84, 0.5);
+      text-shadow: 0 0 5px rgba(220, 53, 69, 0.5); /* <-- DIUBAH */
     }
     50% {
       opacity: 0.8;
-      text-shadow: 0 0 15px rgba(25, 135, 84, 1);
+      text-shadow: 0 0 15px rgba(220, 53, 69, 1); /* <-- DIUBAH */
+    }
+  }
+
+  /* Efek 'Dirty' (DENYUT/THROB) - Sesuai Video "Alpa" */
+  @keyframes throb-warning-animation {
+    0% {
+      /* State normal/awal */
+      border-color: var(--danger-color);
+      /* Bayangan statis (untuk tebal) + Bayangan glow (denyut) kecil */
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 0 5px rgba(220, 53, 69, 0.4);
+    }
+    50% {
+      /* State puncak denyut (tebal) */
+      border-color: #ff6b81; /* Merah lebih terang */
+      /* Bayangan statis (tetap ada) + Bayangan glow (denyut) BESAR */
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 0 25px 10px rgba(253, 126, 20, 0.7); 
+    }
+    100% {
+      /* Kembali ke normal */
+      border-color: var(--danger-color);
+      /* Bayangan statis (untuk tebal) + Bayangan glow (denyut) kecil */
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 0 5px rgba(220, 53, 69, 0.4);
     }
   }
 
