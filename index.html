@@ -6,6 +6,8 @@
     <title>Pengolahan Nilai Ijazah</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
     <?!= include('style'); ?>
   </head>
   <body>
@@ -1496,6 +1498,18 @@
 
         <div class="page-header">
           <h2>Donasi Fitur Premium</h2>
+        </div>
+
+        <div class="swiper-container donasi-slider">
+          <div class="swiper-wrapper">
+            
+            <?!= include('slider-content'); ?>
+            </div>
+          
+          <div class="swiper-button-next"></div>
+          <div class="swiper-button-prev"></div>
+          
+          <div class="swiper-pagination"></div>
         </div>
 
         <div id="donasi-state-form" style="display: none;">
