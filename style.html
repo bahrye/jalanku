@@ -512,6 +512,7 @@
 
     .header-buttons {
       margin-top: 0;
+      flex-wrap: nowrap;
     }
   }
 
@@ -519,6 +520,7 @@
     display: flex;
     gap: 10px;
     margin-top: 15px;
+    flex-wrap: wrap;
   }
 
   #btn-tambah-mapel-baru,
@@ -4516,4 +4518,22 @@
     --shimmer-color: rgba(253, 126, 20, 0.8); /* Kilau Oranye */
   }
   
+  /* --- TAMBAHKAN BLOK BARU INI DI AKHIR FILE STYLE.HTML --- */
+
+  /* Aturan untuk Layar Ponsel (di bawah 768px) */
+  @media (max-width: 767px) {
+    .header-buttons {
+      /* (Pastikan aturan ini sudah ada di baris 1212) */
+      flex-wrap: wrap; 
+    }
+
+    .header-buttons button {
+      /* Ini akan membuat grid 2x2 di ponsel */
+      width: auto;
+      flex-grow: 1;
+      flex-basis: 40%; 
+    }
+  }
+
+  /* --- AKHIR BLOK BARU --- */
 </style>
