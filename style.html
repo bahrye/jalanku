@@ -4029,7 +4029,7 @@
     /* opacity: 0.7; */ /* <-- HAPUS BARIS INI */
     box-shadow: none !important;
     transform: none !important;
-    cursor: not-allowed; 
+    cursor: pointer; 
   }
 
   /* --- TAMBAHAN BARU: Kembalikan warna ikon/teks non-hover --- */
@@ -4065,7 +4065,7 @@
     /* opacity: 0.7; */ /* <-- HAPUS BARIS INI */
     box-shadow: none !important;
     transform: none !important;
-    cursor: not-allowed;
+    cursor: pointer;
   }
 
   /* --- TAMBAHAN BARU: Kembalikan warna ikon/teks non-hover --- */
@@ -4302,5 +4302,147 @@
   .donasi-slider.video-is-playing .swiper-button-prev {
     opacity: 0;
     pointer-events: none;
+  }
+
+  /* --- ============================================= --- */
+  /* ---      GAYA BARU UNTUK TOOLTIP MODAL SISWA/MAPEL --- */
+  /* --- ============================================= --- */
+
+  #modal-nisn-tooltip,
+  #modal-nis-lokal-tooltip,
+  #modal-mapel-id-tooltip { /* <-- TAMBAHKAN INI */
+    background-color: var(--bg-light);
+    border: 1px solid var(--danger-color); /* Selalu border error */
+    border-radius: 8px;
+    padding: 0 15px; /* Vertikal 0 saat tersembunyi */
+    margin-top: 0;
+    border-width: 0; /* Sembunyi border by default */
+    
+    /* Sembunyikan secara default */
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    visibility: hidden;
+    
+    transition: all 0.3s ease-out;
+  }
+
+  /* Tampilkan HANYA saat ada kelas .show (dari JS) */
+  #modal-nisn-tooltip.show,
+  #modal-nis-lokal-tooltip.show {
+    max-height: 200px;
+    opacity: 1;
+    visibility: visible;
+    padding: 12px 15px;
+    margin-top: 10px;
+    border-width: 1px;
+  }
+
+  #modal-nisn-tooltip ul,
+  #modal-nis-lokal-tooltip ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  #modal-nisn-tooltip li,
+  #modal-nis-lokal-tooltip li,
+  #modal-mapel-id-tooltip li { /* <-- TAMBAHKAN INI */
+    font-size: 13px;
+    color: var(--danger-color);
+    padding-left: 22px;
+    position: relative;
+    margin-bottom: 0; /* Hanya 1 item, jadi 0 */
+    opacity: 1;
+  }
+
+  #modal-nisn-tooltip li::before,
+  #modal-nis-lokal-tooltip li::before,
+  #modal-mapel-id-tooltip li::before { /* <-- TAMBAHKAN INI */
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    content: "\f00d"; /* Ikon silang (times) */
+    font-size: 12px;
+    position: absolute;
+    left: 0;
+    top: 2px;
+    color: var(--danger-color);
+  }
+
+  /* --- ============================================= --- */
+  /* ---      GAYA BARU: EFEK SHIMMER PREMIUM (V2)     --- */
+  /* ---         (LEBIH TERANG DAN LEBIH CEPAT)        --- */
+  /* --- ============================================= --- */
+
+  /* 1. Definisikan animasi shimmer */
+  @keyframes shimmer-premium-stronger {
+    0% {
+      /* Mulai dari luar kiri */
+      transform: translateX(-150%);
+    }
+    40% {
+      /* Selesai di luar kanan */
+      transform: translateX(150%);
+    }
+    100% {
+      /* Tetap di luar kanan (ini menciptakan jeda/pause) */
+      transform: translateX(150%);
+    }
+  }
+
+  /* 2. Buat pseudo-elemen (lapisan kilau) untuk shimmer */
+  #btn-buka-guru::before,
+  #btn-buka-kelola-kelulusan::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    
+    /* --- PERUBAHAN UTAMA --- */
+    /* Gradien kilau (lebih terang dan lebih sempit) */
+    background: linear-gradient(
+      100deg, 
+      rgba(255, 255, 255, 0) 30%, 
+      rgba(255, 255, 255, 0.8) 50%, /* Opacity 0.8 (dari 0.4) */
+      rgba(255, 255, 255, 0) 70%
+    );
+    
+    /* Mulai dari posisi non-aktif */
+    transform: translateX(-150%);
+    
+    /* --- PERUBAHAN UTAMA --- */
+    /* Animasi 3.5 detik, jeda, lalu ulang */
+    animation: shimmer-premium-stronger 3.5s infinite ease-in-out;
+    
+    /* Lapisan 1: Shimmer (di paling bawah konten) */
+    z-index: 1;
+    
+    /* Sembunyikan secara default */
+    display: none;
+    
+    /* Mencegah kilau bocor keluar dari rounded corners */
+    border-radius: 12px;
+  }
+  
+  /* 3. Tampilkan shimmer HANYA jika kartu AKTIF (tidak memiliki .card-disabled) */
+  #btn-buka-guru:not(.card-disabled)::before,
+  #btn-buka-kelola-kelulusan:not(.card-disabled)::before {
+    display: block;
+  }
+  
+  /* 4. Pastikan konten (ikon/teks) ada DI ATAS shimmer */
+  .dashboard-card i,
+  .dashboard-card span {
+     position: relative; /* Diperlukan agar z-index berfungsi */
+     /* Lapisan 2: Konten */
+     z-index: 2;
+  }
+  
+  /* 5. Pastikan stamp "Premium" (saat disabled) ada DI ATAS segalanya */
+  .premium-stamp {
+     /* Lapisan 3: Stamp */
+     z-index: 3;
   }
 </style>
