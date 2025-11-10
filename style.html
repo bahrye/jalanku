@@ -4390,7 +4390,6 @@
     }
   }
 
-  /* 2. Buat pseudo-elemen (lapisan kilau) untuk shimmer */
   #btn-buka-guru::before,
   #btn-buka-kelola-kelulusan::before {
     content: '';
@@ -4401,11 +4400,14 @@
     height: 100%;
     
     /* --- PERUBAHAN UTAMA --- */
+    /* Variabel untuk warna kilau (default putih) */
+    --shimmer-color: rgba(255, 255, 255, 0.8);
+    
     /* Gradien kilau (lebih terang dan lebih sempit) */
     background: linear-gradient(
       100deg, 
       rgba(255, 255, 255, 0) 30%, 
-      rgba(255, 255, 255, 0.8) 50%, /* Opacity 0.8 (dari 0.4) */
+      var(--shimmer-color) 50%, /* <-- Menggunakan Variabel */
       rgba(255, 255, 255, 0) 70%
     );
     
@@ -4425,10 +4427,10 @@
     /* Mencegah kilau bocor keluar dari rounded corners */
     border-radius: 12px;
   }
-  
-  /* 3. Tampilkan shimmer HANYA jika kartu AKTIF (tidak memiliki .card-disabled) */
-  #btn-buka-guru:not(.card-disabled)::before,
-  #btn-buka-kelola-kelulusan:not(.card-disabled)::before {
+
+  /* 3. Tampilkan shimmer HANYA jika kartu NON-AKTIF (memiliki .card-disabled) */
+  #btn-buka-guru.card-disabled::before,
+  #btn-buka-kelola-kelulusan.card-disabled::before {
     display: block;
   }
   
@@ -4444,5 +4446,79 @@
   .premium-stamp {
      /* Lapisan 3: Stamp */
      z-index: 3;
+  }
+
+  /* --- REKOMENDASI PERBAIKAN: Efek Shimmer Terlihat --- */
+
+  /* * 1. Berikan warna latar default pada kartu premium AKTIF 
+  * (bukan hanya saat hover) agar shimmer terlihat.
+  */
+  #btn-buka-kelola-kelulusan:not(.card-disabled) {
+    background-color: #d63384 !important; /* Warna pink/ungu dari hover state */
+    color: white !important;
+  }
+
+  #btn-buka-guru:not(.card-disabled) {
+    background-color: #20c997 !important; /* Warna hijau dari hover state */
+    color: white !important;
+  }
+
+  /* * 2. Pastikan ikon & teks juga putih (mengambil dari hover state)
+  * agar kontras dengan latar berwarna.
+  */
+  #btn-buka-kelola-kelulusan:not(.card-disabled) i,
+  #btn-buka-kelola-kelulusan:not(.card-disabled) span,
+  #btn-buka-guru:not(.card-disabled) i,
+  #btn-buka-guru:not(.card-disabled) span {
+    color: white !important;
+  }
+
+  /* * 3. (Opsional) Sedikit gelapkan warna saat di-hover 
+  * untuk tetap memberikan efek interaktif.
+  */
+  #btn-buka-kelola-kelulusan:not(.card-disabled):hover {
+    background-color: #b02a6b !important; /* Warna hover yang sedikit lebih gelap */
+  }
+  #btn-buka-guru:not(.card-disabled):hover {
+    background-color: #1a9973 !important; /* Warna hover yang sedikit lebih gelap */
+  }
+
+  /* --- PERBAIKAN FINAL (V2): Shimmer HANYA saat Non-Aktif --- */
+
+  /* 1. Atur warna kilau HANYA untuk kartu NON-AKTIF (.card-disabled) */
+  #btn-buka-guru.card-disabled::before {
+    --shimmer-color: rgba(32, 201, 151, 0.8); /* Kilau Hijau */
+  }
+
+  #btn-buka-kelola-kelulusan.card-disabled::before {
+    --shimmer-color: rgba(214, 51, 132, 0.8); /* Kilau Pink/Ungu */
+  }
+
+  /* 2. Atur warna TEKS/IKON untuk kartu AKTIF (DEFAULT state) */
+  /* Ini memastikan warnanya kembali normal (tidak putih) saat tidak di-hover */
+  #btn-buka-guru:not(.card-disabled) i,
+  #btn-buka-guru:not(.card-disabled) span {
+    color: #20c997 !important; /* Teks Hijau */
+  }
+
+  #btn-buka-kelola-kelulusan:not(.card-disabled) i,
+  #btn-buka-kelola-kelulusan:not(.card-disabled) span {
+    color: #d63384 !important; /* Teks Pink/Ungu */
+  }
+
+  /* 3. Pastikan ikon & teks juga putih saat AKTIF */
+  #btn-buka-guru:not(.card-disabled) i,
+  #btn-buka-guru:not(.card-disabled) span,
+  #btn-buka-kelola-kelulusan:not(.card-disabled) i,
+  #btn-buka-kelola-kelulusan:not(.card-disabled) span {
+    color: white !important;
+  }
+
+  /* 4. (Opsional) Efek hover sedikit lebih gelap untuk kartu AKTIF */
+  #btn-buka-guru:not(.card-disabled):hover {
+    background-color: #1a9973 !important; 
+  }
+  #btn-buka-kelola-kelulusan:not(.card-disabled):hover {
+    background-color: #b02a6b !important;
   }
 </style>
