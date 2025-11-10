@@ -351,6 +351,7 @@
   #btn-kembali-ke-dashboard-10,
   #btn-kembali-ke-dashboard-11,
   #btn-kembali-ke-dashboard-12,
+  #btn-kembali-ke-dashboard-13,
   #btn-kembali-ke-input-rapor,
   #btn-kembali-ke-input-rapor-2,
   #btn-kembali-ke-dashboard-guru {
@@ -378,6 +379,7 @@
   #btn-kembali-ke-dashboard-10:hover,
   #btn-kembali-ke-dashboard-11:hover,
   #btn-kembali-ke-dashboard-12:hover,
+  #btn-kembali-ke-dashboard-13:hover,
   #btn-kembali-ke-input-rapor:hover,
   #btn-kembali-ke-input-rapor-2:hover,
   #btn-kembali-ke-dashboard-guru:hover {
@@ -497,7 +499,8 @@
     #halaman-superadmin,
     #halaman-kelola-kelulusan,
     #halaman-guru,
-    #halaman-donasi {
+    #halaman-donasi,
+    #halaman-proses-kelulusan {
       max-width: 960px;
     }
 
@@ -527,7 +530,8 @@
   #btn-import-siswa,
   #btn-tambah-guru-baru,
   #btn-import-guru,
-  #btn-cetak-kartu-guru {
+  #btn-cetak-kartu-guru,
+  #btn-cetak-kartu-siswa {
     width: auto;
     padding: 10px 15px;
     font-size: 14px;
@@ -938,6 +942,15 @@
   #btn-import-guru:hover {
     background-color: var(--primary-dark);
   }
+
+  /* --- TAMBAHKAN BLOK BARU INI --- */
+  #btn-cetak-kartu-siswa {
+    background-color: var(--primary-color);
+  }
+  #btn-cetak-kartu-siswa:hover {
+    background-color: var(--primary-dark);
+  }
+  /* --- AKHIR BLOK BARU --- */
 
   #btn-download-template-siswa,
   #btn-download-template-guru {
@@ -2689,6 +2702,7 @@
   #btn-kembali-ke-dashboard-10,
   #btn-kembali-ke-dashboard-11,
   #btn-kembali-ke-dashboard-12,
+  #btn-kembali-ke-dashboard-13,
   #btn-kembali-ke-input-rapor,
   #btn-kembali-ke-input-rapor-2,
   #btn-kembali-ke-dashboard-guru {
@@ -2710,8 +2724,10 @@
   #btn-kembali-ke-dashboard-10 i,
   #btn-kembali-ke-dashboard-11 i,
   #btn-kembali-ke-dashboard-12 i,
+  #btn-kembali-ke-dashboard-13 i,
   #btn-kembali-ke-input-rapor i,
-  #btn-kembali-ke-input-rapor-2 i {
+  #btn-kembali-ke-input-rapor-2 i,
+  #btn-kembali-ke-dashboard-guru i {
       pointer-events: none;
   }
 
@@ -4092,6 +4108,35 @@
     color: white !important; /* Ikon & teks menjadi putih */
   }
 
+  /* --- TAMBAHKAN BLOK BARU INI --- */
+  /* Override: Kembalikan warna asli untuk kartu Proses Kelulusan */
+  #btn-buka-proses-kelulusan.card-disabled,
+  #btn-buka-proses-kelulusan:disabled {
+    background-color: var(--bg-white) !important;
+    color: #fd7e14 !important; /* Warna asli Proses Kelulusan */
+    box-shadow: none !important;
+    transform: none !important;
+    cursor: pointer;
+  }
+  #btn-buka-proses-kelulusan.card-disabled i,
+  #btn-buka-proses-kelulusan:disabled i,
+  #btn-buka-proses-kelulusan.card-disabled span,
+  #btn-buka-proses-kelulusan:disabled span {
+    color: #fd7e14 !important; /* Warna oranye asli */
+  }
+  #btn-buka-proses-kelulusan.card-disabled:hover,
+  #btn-buka-proses-kelulusan:disabled:hover {
+    background-color: #fd7e14 !important; /* Warna solid oranye */
+    color: white !important;
+  }
+  #btn-buka-proses-kelulusan.card-disabled:hover i,
+  #btn-buka-proses-kelulusan:disabled:hover i,
+  #btn-buka-proses-kelulusan.card-disabled:hover span,
+  #btn-buka-proses-kelulusan:disabled:hover span {
+    color: white !important; /* Ikon & teks menjadi putih */
+  }
+  /* --- AKHIR BLOK BARU --- */
+
   /* === GAYA TAB LOGIN (GATING) === */
   .auth-tabs .tab-link:disabled {
     background-color: #e9ecef;
@@ -4110,6 +4155,14 @@
     background-color: #198754 !important;
     color: white !important;
   }
+
+  /* --- TAMBAHKAN BLOK BARU INI --- */
+  #btn-buka-proses-kelulusan { color: #fd7e14; }
+  #btn-buka-proses-kelulusan:hover {
+    background-color: #fd7e14 !important;
+    color: white !important;
+  }
+  /* --- AKHIR BLOK BARU --- */
 
   .video-container {
     position: relative;
@@ -4391,7 +4444,8 @@
   }
 
   #btn-buka-guru::before,
-  #btn-buka-kelola-kelulusan::before {
+  #btn-buka-kelola-kelulusan::before,
+  #btn-buka-proses-kelulusan::before {
     content: '';
     position: absolute;
     top: 0;
@@ -4430,7 +4484,8 @@
 
   /* 3. Tampilkan shimmer HANYA jika kartu NON-AKTIF (memiliki .card-disabled) */
   #btn-buka-guru.card-disabled::before,
-  #btn-buka-kelola-kelulusan.card-disabled::before {
+  #btn-buka-kelola-kelulusan.card-disabled::before,
+  #btn-buka-proses-kelulusan.card-disabled::before {
     display: block;
   }
   
@@ -4448,44 +4503,7 @@
      z-index: 3;
   }
 
-  /* --- REKOMENDASI PERBAIKAN: Efek Shimmer Terlihat --- */
-
-  /* * 1. Berikan warna latar default pada kartu premium AKTIF 
-  * (bukan hanya saat hover) agar shimmer terlihat.
-  */
-  #btn-buka-kelola-kelulusan:not(.card-disabled) {
-    background-color: #d63384 !important; /* Warna pink/ungu dari hover state */
-    color: white !important;
-  }
-
-  #btn-buka-guru:not(.card-disabled) {
-    background-color: #20c997 !important; /* Warna hijau dari hover state */
-    color: white !important;
-  }
-
-  /* * 2. Pastikan ikon & teks juga putih (mengambil dari hover state)
-  * agar kontras dengan latar berwarna.
-  */
-  #btn-buka-kelola-kelulusan:not(.card-disabled) i,
-  #btn-buka-kelola-kelulusan:not(.card-disabled) span,
-  #btn-buka-guru:not(.card-disabled) i,
-  #btn-buka-guru:not(.card-disabled) span {
-    color: white !important;
-  }
-
-  /* * 3. (Opsional) Sedikit gelapkan warna saat di-hover 
-  * untuk tetap memberikan efek interaktif.
-  */
-  #btn-buka-kelola-kelulusan:not(.card-disabled):hover {
-    background-color: #b02a6b !important; /* Warna hover yang sedikit lebih gelap */
-  }
-  #btn-buka-guru:not(.card-disabled):hover {
-    background-color: #1a9973 !important; /* Warna hover yang sedikit lebih gelap */
-  }
-
-  /* --- PERBAIKAN FINAL (V2): Shimmer HANYA saat Non-Aktif --- */
-
-  /* 1. Atur warna kilau HANYA untuk kartu NON-AKTIF (.card-disabled) */
+  /* 6. Atur warna kilau HANYA untuk kartu NON-AKTIF (.card-disabled) */
   #btn-buka-guru.card-disabled::before {
     --shimmer-color: rgba(32, 201, 151, 0.8); /* Kilau Hijau */
   }
@@ -4494,31 +4512,8 @@
     --shimmer-color: rgba(214, 51, 132, 0.8); /* Kilau Pink/Ungu */
   }
 
-  /* 2. Atur warna TEKS/IKON untuk kartu AKTIF (DEFAULT state) */
-  /* Ini memastikan warnanya kembali normal (tidak putih) saat tidak di-hover */
-  #btn-buka-guru:not(.card-disabled) i,
-  #btn-buka-guru:not(.card-disabled) span {
-    color: #20c997 !important; /* Teks Hijau */
+  #btn-buka-proses-kelulusan.card-disabled::before {
+    --shimmer-color: rgba(253, 126, 20, 0.8); /* Kilau Oranye */
   }
-
-  #btn-buka-kelola-kelulusan:not(.card-disabled) i,
-  #btn-buka-kelola-kelulusan:not(.card-disabled) span {
-    color: #d63384 !important; /* Teks Pink/Ungu */
-  }
-
-  /* 3. Pastikan ikon & teks juga putih saat AKTIF */
-  #btn-buka-guru:not(.card-disabled) i,
-  #btn-buka-guru:not(.card-disabled) span,
-  #btn-buka-kelola-kelulusan:not(.card-disabled) i,
-  #btn-buka-kelola-kelulusan:not(.card-disabled) span {
-    color: white !important;
-  }
-
-  /* 4. (Opsional) Efek hover sedikit lebih gelap untuk kartu AKTIF */
-  #btn-buka-guru:not(.card-disabled):hover {
-    background-color: #1a9973 !important; 
-  }
-  #btn-buka-kelola-kelulusan:not(.card-disabled):hover {
-    background-color: #b02a6b !important;
-  }
+  
 </style>
