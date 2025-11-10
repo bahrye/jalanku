@@ -87,6 +87,49 @@ function getSheetRegistrasiPending(masterSS) {
   return sheet;
 }
 
+/**
+ * [BARU] Membuat ID Sekolah yang unik berdasarkan nama sekolah dan kode acak.
+ * Memastikan ID tidak bertabrakan dengan yang sudah ada.
+ */
+function generateNewSekolahID(namaSekolah, sheetSekolah) {
+  // 1. Buat prefix dari nama sekolah (ambil 4 huruf/angka pertama)
+  // Cth: "MTS TANUNTUNG" -> "MTST"
+  const prefix = namaSekolah.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 4) || "SKL"; // Fallback "SKL"
+  
+  // 2. Dapatkan semua ID yang sudah ada
+  const dataSekolah = sheetSekolah.getDataRange().getValues();
+  const existingIds = new Set();
+  for (let i = 1; i < dataSekolah.length; i++) { // Mulai dari 1 untuk lewati header
+    existingIds.add(dataSekolah[i][0]); // Kolom A adalah SekolahID
+  }
+
+  let newSekolahID = '';
+  let attempts = 0;
+  const MAX_ATTEMPTS = 10;
+
+  // 3. Loop untuk mencari ID unik
+  do {
+    attempts++;
+    let suffix = '';
+    if (attempts > MAX_ATTEMPTS) {
+      // Failsafe: jika 10x tabrakan (sangat langka), gunakan bagian dari UUID
+      suffix = Utilities.getUuid().split('-')[0]; // e.g., "a1b2c3d4"
+    } else {
+      // Buat 5 karakter acak (alphanumeric)
+      suffix = Math.random().toString(36).substring(2, 7); // cth: "f3xgv"
+    }
+    
+    newSekolahID = `${prefix}-${suffix}`.toUpperCase(); // Cth: "MTST-F3XGV"
+    
+    if (attempts > MAX_ATTEMPTS + 5) { // Failsafe kedua
+       throw new Error("Gagal total membuat ID Sekolah unik. Silakan coba lagi.");
+    }
+    
+  } while (existingIds.has(newSekolahID)); // Loop jika ID sudah ada
+
+  return newSekolahID;
+}
+
 function doGet(e) {
   // Cek apakah ada parameter 'v' (untuk verifikasi)
   if (e.parameter.v) {
@@ -273,7 +316,7 @@ function buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, password, ma
     // Menggunakan variabel 'npsn' yang diterima fungsi
     sheetDataSekolah.appendRow([
       jenjangPilihanDefault, 
-      npsn, // <-- PERBAIKAN
+      "'" + npsn, 
       '', '', '', 
       '', 'Kabupaten', '', '', 'Kelurahan', 
       '', '', '', '', '', ''
@@ -363,7 +406,7 @@ function prosesVerifikasiToken(token) {
           const newSSID = buatDatabaseSekolahBaru(namaSekolah, jenjang, npsn, email, "dummy_password_not_used", masterSS);
           // --- AKHIR PERBAIKAN ---
           
-          const newSekolahID = "SKL-" + (sheetSekolah.getLastRow());
+          const newSekolahID = generateNewSekolahID(namaSekolah, sheetSekolah);
           sheetSekolah.appendRow([
             newSekolahID, 
             namaSekolah.toUpperCase(), 
@@ -372,7 +415,7 @@ function prosesVerifikasiToken(token) {
             dbHash, 
             newSSID,
             dbSalt,
-            npsn,
+            "'" + npsn,
             "NONE", // DonasiStatus
             "",     // DonasiFileID
             "",     // DonasiDataJSON
@@ -798,7 +841,7 @@ function prosesRegistrasi(namaSekolah, npsn, jenjang, email, password) {
     sheetPending.appendRow([
       email,
       namaSekolahUpper,
-      npsn,
+      "'" + npsn,
       jenjang,
       newHash, 
       newSalt, 
@@ -1060,7 +1103,7 @@ function superadminSaveSekolah(token, data) {
 
       const newSalt = generateSalt();
       const newHash = hashPassword(password, newSalt);
-      const newSekolahID = "SKL-" + (sheetSekolah.getLastRow());
+      const newSekolahID = generateNewSekolahID(nama, sheetSekolah);
       sheetSekolah.appendRow([
         newSekolahID,
         nama.toUpperCase(),
@@ -1688,6 +1731,10 @@ function getSiswa(token) {
 }
 
 function createSiswa(token, dataSiswa) {
+  // --- PERBAIKAN: Tambahkan LockService ---
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(15000); // Tunggu 15 detik
+  // --- AKHIR PERBAIKAN ---
   try {
     const { sessionData, spreadsheetID } = validateAdminSession(token);
     if (!dataSiswa.nama || !dataSiswa.nisn || !dataSiswa.jk || !dataSiswa.kelas) {
@@ -1745,6 +1792,8 @@ function createSiswa(token, dataSiswa) {
 
   } catch (e) {
     return { status: "gagal", message: e.message };
+  } finally {
+    if (lock) lock.releaseLock();
   }
 }
 
@@ -2207,6 +2256,8 @@ function getSiswaTemplateUrl(token) {
 function prosesImportExcelSiswa(token, fileData) {
   let tempExcelFileId = null;
   let tempConvertedSheetId = null;
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(30000); // Tunggu 30 detik untuk impor
   try {
     const { sessionData, spreadsheetID } = validateAdminSession(token);
     const ss = SpreadsheetApp.openById(spreadsheetID);
@@ -2316,6 +2367,8 @@ function prosesImportExcelSiswa(token, fileData) {
     if (tempExcelFileId) { DriveApp.getFileById(tempExcelFileId).setTrashed(true); }
     if (tempConvertedSheetId) { DriveApp.getFileById(tempConvertedSheetId).setTrashed(true); }
     return { status: "gagal", message: "Terjadi error: " + e.message };
+  } finally {
+    if (lock) lock.releaseLock();
   }
 }
 
@@ -5560,4 +5613,160 @@ function _getSiswaInternal(spreadsheetID, sekolahID) {
   // 3. Simpan ke cache untuk panggilan berikutnya
   scriptCache.put(cacheKey, JSON.stringify(siswaList), 3600); // Cache 1 jam
   return siswaList;
+}
+
+/**
+ * [BARU] Mengambil nama sekolah untuk konfirmasi.
+ */
+function getNamaSekolah(token) {
+  try {
+    const { sessionData } = validateAdminSession(token);
+    return { status: "sukses", namaSekolah: sessionData.namaSekolah };
+  } catch (e) {
+    return { status: "gagal", message: e.message };
+  }
+}
+
+/**
+ * [BARU] Membuat file backup .xlsx dari SELURUH database sekolah.
+ */
+function getBackupDatabaseExcel(token) {
+  try {
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
+    
+    const url = "https://docs.google.com/spreadsheets/d/" + spreadsheetID + "/export?format=xlsx";
+    const oauthToken = ScriptApp.getOAuthToken();
+    
+    const response = UrlFetchApp.fetch(url, {
+      headers: {
+        'Authorization': 'Bearer ' + oauthToken
+      },
+      muteHttpExceptions: true // Tangkap error
+    });
+    
+    if (response.getResponseCode() !== 200) {
+      throw new Error("Gagal mengambil file dari server Google. Coba lagi.");
+    }
+
+    const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+    const fileName = `[BACKUP] ${sessionData.namaSekolah} - ${timestamp}.xlsx`;
+    const blob = response.getBlob().setName(fileName);
+    
+    return { 
+      status: "sukses", 
+      base64: Utilities.base64Encode(blob.getBytes()), 
+      mimeType: MimeType.MICROSOFT_EXCEL, 
+      fileName: fileName 
+    };
+    
+  } catch (e) {
+    Logger.log("Gagal getBackupDatabaseExcel: " + e.message);
+    return { status: "gagal", message: "Gagal membuat file backup: " + e.message };
+  }
+}
+
+/**
+ * [BARU - DIPERBARUI] Menghapus semua data siswa, nilai, dan cache ijazah.
+ * Mempertahankan Mapel, Kelas, dan Akun Guru.
+ */
+function hapusSemuaDataSiswaDanNilai(token) {
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(30000); // Kunci selama 30 detik
+  
+  let spreadsheetID, sessionData;
+  try {
+    const session = validateAdminSession(token);
+    spreadsheetID = session.spreadsheetID;
+    sessionData = session.sessionData;
+    
+    const ss = SpreadsheetApp.openById(spreadsheetID);
+    
+    // Daftar sheet yang akan DIBERSIHKAN (bukan dihapus)
+    const sheetsToClear = [
+      'Siswa',
+      'Nilai_Ujian',
+      'Nilai_Rapor_Akhir',
+      'Cache_Rekap_Ijazah'
+      // 'Akun_Guru' <-- TELAH DIHAPUS DARI DAFTAR INI
+    ];
+    
+    sheetsToClear.forEach(sheetName => {
+      const sheet = ss.getSheetByName(sheetName);
+      if (sheet) {
+        const lastRow = sheet.getLastRow();
+        if (lastRow > 1) {
+          // Hapus baris 2 sampai akhir
+          sheet.deleteRows(2, lastRow - 1);
+        }
+      }
+    });
+
+    // Bersihkan semua cache sisi server yang terkait siswa
+    clearSiswaCache(sessionData.sekolahID, spreadsheetID);
+    clearNilaiUjianCache(sessionData.sekolahID, spreadsheetID);
+    clearNilaiRaporCache(sessionData.sekolahID, spreadsheetID);
+    clearRekapNilaiCache(sessionData.sekolahID);
+    clearLockedKelasCache(sessionData.sekolahID);
+    CacheService.getScriptCache().remove(NILAI_IJAZAH_CACHE_KEY + "_" + sessionData.sekolahID);
+
+    return { status: "sukses" };
+
+  } catch (e) {
+    Logger.log("Gagal hapusSemuaDataSiswaDanNilai: " + e.message);
+    return { status: "gagal", message: e.message };
+  } finally {
+    if (lock) lock.releaseLock();
+  }
+}
+
+/**
+ * [BARU - DIPERBARUI] Membuat data kartu login untuk SEMUA siswa.
+ * Mengambil data siswa yang memiliki NISN dan Tgl Lahir.
+ */
+function generateSiswaLoginCards(token) {
+  try {
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
+    
+    // 1. Dapatkan URL login siswa
+    const appUrl = ScriptApp.getService().getUrl() + '#login-siswa';
+    
+    // 2. Dapatkan semua data siswa (dari cache atau sheet)
+    const allSiswa = _getSiswaInternal(spreadsheetID, sessionData.sekolahID);
+
+    const cardData = [];
+
+    // 3. Filter siswa
+    allSiswa.forEach(siswa => {
+      // Hanya sertakan siswa yang memiliki NISN dan Tanggal Lahir
+      if (siswa.nisn && siswa.tglLahir) {
+        
+        // --- PERBAIKAN FORMAT TANGGAL DI SINI ---
+        let formattedDate = siswa.tglLahir; // Default: "YYYY-MM-DD"
+        try {
+          // Pisahkan tanggal "2025-11-07"
+          const parts = siswa.tglLahir.split('-');
+          if (parts.length === 3) {
+            // Susun ulang menjadi "07-11-2025"
+            formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+          }
+        } catch(e) {
+          // Jika gagal, biarkan format aslinya
+          Logger.log("Gagal format tanggal siswa: " + e.message);
+        }
+        // --- AKHIR PERBAIKAN ---
+
+        cardData.push({
+          nama: siswa.nama,
+          nisn: siswa.nisn,
+          tglLahir: formattedDate // Kirim format baru ke klien
+        });
+      }
+    });
+
+    return { status: "sukses", cardData: cardData, websiteUrl: appUrl };
+
+  } catch (e) {
+    Logger.log("Error generateSiswaLoginCards: " + e.message);
+    return { status: "gagal", message: e.message };
+  }
 }
