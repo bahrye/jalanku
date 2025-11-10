@@ -463,18 +463,26 @@ function clearMasterSheetCache() {
   }
 }
 
+// Salin dan ganti fungsi clearRekapNilaiCache() Anda dengan yang ini
 function clearRekapNilaiCache(sekolahID) {
   try {
     const cacheKey = REKAP_NILAI_CACHE_KEY + "_" + sekolahID;
     
-    // --- PERBAIKAN ---
-    CacheService.getScriptCache().remove(cacheKey);
+    // --- PERBAIKAN: Gunakan variabel scriptCache ---
+    const scriptCache = CacheService.getScriptCache();
+    scriptCache.remove(cacheKey);
     // --- AKHIR PERBAIKAN ---
 
+    // --- TAMBAHAN: Rekap Ujian mempengaruhi Ijazah ---
+    scriptCache.remove(NILAI_IJAZAH_CACHE_KEY + "_" + sekolahID);
+    // --- AKHIR TAMBAHAN ---
+
   } catch (e) {
+     Logger.log("Gagal clearRekapNilaiCache: " + e.message);
   }
 }
 
+// Salin dan ganti fungsi clearNilaiUjianCache() Anda dengan yang ini
 function clearNilaiUjianCache(sekolahID, spreadsheetID) { // <--- Terima spreadsheetID
   try {
     const scriptCache = CacheService.getScriptCache();
@@ -482,11 +490,9 @@ function clearNilaiUjianCache(sekolahID, spreadsheetID) { // <--- Terima spreads
     scriptCache.remove(NILAI_GRID_CACHE_KEY_PREFIX + 'UM' + "_" + sekolahID);
     scriptCache.remove(NILAI_GRID_CACHE_KEY_PREFIX + 'Praktek' + "_" + sekolahID);
 
-    // --- PERBAIKAN: Gunakan 'spreadsheetID' yang dikirim ---
     if (spreadsheetID) {
       const ss = SpreadsheetApp.openById(spreadsheetID);
       const sheetGuru = ss.getSheetByName('Akun_Guru');
-    // --- AKHIR PERBAIKAN ---
 
       if (sheetGuru) {
         const guruData = sheetGuru.getDataRange().getValues();
@@ -503,24 +509,36 @@ function clearNilaiUjianCache(sekolahID, spreadsheetID) { // <--- Terima spreads
       }
     } // Akhir dari 'if (spreadsheetID)'
     
+    // --- TAMBAHAN: Pastikan Ijazah dan Rekap juga bersih ---
     clearRekapNilaiCache(sekolahID);
+    scriptCache.remove(NILAI_IJAZAH_CACHE_KEY + "_" + sekolahID);
+    // --- AKHIR TAMBAHAN ---
+
   } catch (e) {
      Logger.log("Gagal clearNilaiUjianCache: " + e.message);
   }
 }
 
+// Salin dan ganti fungsi clearRekapNilaiRaporCache() Anda dengan yang ini
 function clearRekapNilaiRaporCache(sekolahID) {
   try {
     const cacheKey = REKAP_NILAI_RAPOR_CACHE_KEY + "_" + sekolahID;
     
-    // --- PERBAIKAN ---
-    CacheService.getScriptCache().remove(cacheKey);
+    // --- PERBAIKAN: Gunakan variabel scriptCache ---
+    const scriptCache = CacheService.getScriptCache();
+    scriptCache.remove(cacheKey);
     // --- AKHIR PERBAIKAN ---
 
+    // --- TAMBAHAN: Rekap Rapor mempengaruhi Ijazah ---
+    scriptCache.remove(NILAI_IJAZAH_CACHE_KEY + "_" + sekolahID);
+    // --- AKHIR TAMBAHAN ---
+
   } catch (e) {
+     Logger.log("Gagal clearRekapNilaiRaporCache: " + e.message);
   }
 }
 
+// Fungsi ini sudah benar, tidak perlu diubah, tapi pastikan ada di kode Anda.
 function clearNilaiRaporCache(sekolahID, spreadsheetID) { // <--- Terima spreadsheetID
   try {
     const scriptCache = CacheService.getScriptCache();
@@ -569,14 +587,15 @@ function clearNilaiRaporCache(sekolahID, spreadsheetID) { // <--- Terima spreads
   }
 }
 
+// Salin dan ganti fungsi clearSiswaCache() Anda dengan yang ini
 function clearSiswaCache(sekolahID, spreadsheetID) { // <--- Terima spreadsheetID
   try {
     const cacheKey = SISWA_CACHE_KEY + "_" + sekolahID;
     CacheService.getScriptCache().remove(cacheKey);
     
-    // --- PERBAIKAN: Teruskan spreadsheetID ---
-    // clearNilaiUjianCache(sekolahID, spreadsheetID);
-    // clearNilaiRaporCache(sekolahID, spreadsheetID);
+    // --- PERBAIKAN: AKTIFKAN (UN-COMMENT) DUA BARIS DI BAWAH INI ---
+    clearNilaiUjianCache(sekolahID, spreadsheetID);
+    clearNilaiRaporCache(sekolahID, spreadsheetID);
     // --- AKHIR PERBAIKAN ---
 
     clearLockedKelasCache(sekolahID); // Ini tidak perlu spreadsheetID
@@ -586,17 +605,26 @@ function clearSiswaCache(sekolahID, spreadsheetID) { // <--- Terima spreadsheetI
   }
 }
 
-function clearMapelCache(sekolahID) {
+// Salin dan ganti fungsi clearMapelCache() Anda dengan yang ini
+function clearMapelCache(sekolahID, spreadsheetID) { // <--- TAMBAHKAN spreadsheetID
   try {
     const cacheKey = MAPEL_CACHE_KEY + "_" + sekolahID;
     
-    // --- PERBAIKAN ---
-    CacheService.getScriptCache().remove(cacheKey);
+    // --- PERBAIKAN: Hapus baris lama yang salah ---
+    // CacheService.getScriptCache().remove(cacheKey);
     // --- AKHIR PERBAIKAN ---
     
-    // clearNilaiUjianCache(sekolahID);
-    // clearNilaiRaporCache(sekolahID);
+    // --- TAMBAHAN: Ganti dengan baris di bawah ini ---
+    const scriptCache = CacheService.getScriptCache();
+    scriptCache.remove(cacheKey);
+    
+    // Data mapel mempengaruhi SEMUA cache nilai.
+    clearNilaiUjianCache(sekolahID, spreadsheetID);
+    clearNilaiRaporCache(sekolahID, spreadsheetID);
+    // --- AKHIR TAMBAHAN ---
+
   } catch (e) {
+     Logger.log("Gagal clearMapelCache: " + e.message);
   }
 }
 
@@ -1332,11 +1360,15 @@ function getMapelSheet(ss) {
   return sheetMapel;
 }
 
+// Salin dan GANTI fungsi getMapel() Anda dengan yang ini
 function getMapel(token) {
   try {
     const { sessionData, spreadsheetID } = validateAdminOrGuruSession(token);
     const ss = SpreadsheetApp.openById(spreadsheetID);
-    const mapel = getMapelDataInternal(ss, sessionData.sekolahID);
+    
+    // Panggil helper internal baru
+    const mapel = _getMapelInternal(ss, sessionData.sekolahID);
+    
     return { status: "sukses", mapel: mapel };
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -1359,7 +1391,7 @@ function createMapel(token, mapelID, namaMapel) {
       if (urutanNum > maxUrutan) maxUrutan = urutanNum;
     }
     sheetMapel.appendRow([mapelID, namaMapel, false, false, maxUrutan + 1]);
-    clearMapelCache(sessionData.sekolahID);
+    clearMapelCache(sessionData.sekolahID, spreadsheetID);
     return { status: "sukses" };
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -1376,7 +1408,7 @@ function updateMapel(token, mapelID, namaMapel) {
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] === mapelID) {
         sheetMapel.getRange(i + 1, 2).setValue(namaMapel);
-        clearMapelCache(sessionData.sekolahID);
+        clearMapelCache(sessionData.sekolahID, spreadsheetID);
         return { status: "sukses" };
       }
     }
@@ -1395,7 +1427,7 @@ function deleteMapel(token, mapelID) {
     for (let i = data.length - 1; i >= 1; i--) {
       if (data[i][0] === mapelID) {
         sheetMapel.deleteRow(i + 1);
-        clearMapelCache(sessionData.sekolahID);
+        clearMapelCache(sessionData.sekolahID, spreadsheetID);
         return { status: "sukses" };
       }
     }
@@ -1451,7 +1483,7 @@ function syncDefaultMapel(token) {
     if (mapelToAdd.length > 0) {
       sheetMapel.getRange(sheetMapel.getLastRow() + 1, 1, mapelToAdd.length, 5).setValues(mapelToAdd);
     }
-    clearMapelCache(sessionData.sekolahID);
+    clearMapelCache(sessionData.sekolahID, spreadsheetID);
     return { status: "sukses" };
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -1467,7 +1499,7 @@ function deleteAllMapel(token) {
     if (lastRow > 1) {
       sheetMapel.deleteRows(2, lastRow - 1);
     }
-    clearMapelCache(sessionData.sekolahID);
+    clearMapelCache(sessionData.sekolahID, spreadsheetID);
     return { status: "sukses", message: "Semua mapel telah dihapus." };
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -1516,7 +1548,7 @@ function saveMapelTipeUjianBatch(token, tipeUjianData) {
       if (valuesToUpdate.length > 0) {
         sheetMapel.getRange(2, 3, valuesToUpdate.length, 2).setValues(valuesToUpdate);
       }
-      clearMapelCache(sessionData.sekolahID);
+      clearMapelCache(sessionData.sekolahID, spreadsheetID);
     }
     return { status: "sukses" };
   } catch (e) {
@@ -1557,7 +1589,7 @@ function saveMapelUrutanBatch(token, urutanData) {
       if (valuesToUpdate.length > 0) {
         sheet.getRange(2, 5, valuesToUpdate.length, 1).setValues(valuesToUpdate);
       }
-      clearMapelCache(sessionData.sekolahID);
+      clearMapelCache(sessionData.sekolahID, spreadsheetID);
     }
     return { status: "sukses" };
   } catch (e) {
@@ -1603,48 +1635,15 @@ function getSiswaSheet(ss) {
   return sheet;
 }
 
+// Salin dan GANTI fungsi getSiswa() Anda dengan yang ini
 function getSiswa(token) {
   try {
     const { sessionData, spreadsheetID } = validateAdminOrGuruSession(token);
     const sekolahID = sessionData.sekolahID;
-    const cacheKey = SISWA_CACHE_KEY + "_" + sekolahID;
     
-    // --- PERBAIKAN ---
-    const scriptCache = CacheService.getScriptCache();
-    const cachedSiswa = scriptCache.get(cacheKey);
-    // --- AKHIR PERBAIKAN ---
-
-    if (cachedSiswa != null) {
-      return { status: "sukses", siswa: JSON.parse(cachedSiswa) };
-    }
-    const ss = SpreadsheetApp.openById(spreadsheetID);
-    const sheet = getSiswaSheet(ss);
-    const data = sheet.getDataRange().getValues();
-    data.shift();
-    const siswaList = data.map(row => {
-      const idNum = parseInt((row[0] || 'SIS-0').split('-')[1] || 0);
-      return {
-        id: row[0],
-        nama: row[1],
-        nisn: row[2],
-        nisLokal: row[3] || '',
-        jk: row[4] || '',
-        tempatLahir: row[5] || '',
-        tglLahir: (row[6] instanceof Date) ? Utilities.formatDate(row[6], Session.getScriptTimeZone(), "yyyy-MM-dd") : '',
-        kelas: row[7] || '',
-        urutan: row[8] || idNum
-      };
-    });
-    siswaList.sort((a, b) => {
-      const kelasCompare = a.kelas.localeCompare(b.kelas);
-      if (kelasCompare !== 0) return kelasCompare;
-      return (Number(a.urutan) || 0) - (Number(b.urutan) || 0);
-    });
+    // Panggil helper internal yang mengelola cache
+    const siswaList = _getSiswaInternal(spreadsheetID, sekolahID);
     
-    // --- PERBAIKAN ---
-    scriptCache.put(cacheKey, JSON.stringify(siswaList), 3600);
-    // --- AKHIR PERBAIKAN ---
-
     return { status: "sukses", siswa: siswaList };
   } catch (e) {
     return { status: "gagal", message: e.message };
@@ -2375,6 +2374,7 @@ function getNilaiUjianSheet(ss) {
   return sheet;
 }
 
+// Salin dan GANTI fungsi getNilaiUjianGridData() Anda dengan yang ini
 function getNilaiUjianGridData(token, tipeUjian) {
   try {
     const sessionData = validateAndRefreshSession(token);
@@ -2382,11 +2382,9 @@ function getNilaiUjianGridData(token, tipeUjian) {
     const sekolahID = sessionData.sekolahID;
     const isGuru = (sessionData.role === 'guru');
     
-    // --- AMBIL DATA SPESIFIK GURU ---
     const assignedMapelSet = isGuru ? new Set(sessionData.assignedMapel) : null;
     const assignedKelasSet = isGuru ? new Set(sessionData.assignedKelas) : null;
     const mapelKelasData = isGuru ? sessionData.mapelKelasData : null;
-    // --- AKHIR PENGAMBILAN DATA ---
 
     const scriptCache = CacheService.getScriptCache();
     const cacheKeySuffix = isGuru ? `_GURU_${sessionData.namaGuru.replace(/\s+/g, '')}` : '';
@@ -2394,7 +2392,7 @@ function getNilaiUjianGridData(token, tipeUjian) {
     
     const cachedData = scriptCache.get(cacheKey);
     if (cachedData != null) {
-      const ss = SpreadsheetApp.openById(spreadsheetID);
+      const ss = SpreadsheetApp.openById(spreadsheetID); // Buka SS hanya untuk cek waktu
       let cekWaktu = { diizinkan: true, pesan: "" };
       if (isGuru) {
         cekWaktu = cekWaktuInputGuru(ss);
@@ -2402,9 +2400,7 @@ function getNilaiUjianGridData(token, tipeUjian) {
       const parsedCache = JSON.parse(cachedData);
       parsedCache.data.isInputDiizinkan = cekWaktu.diizinkan;
       parsedCache.data.pesanInput = cekWaktu.pesan;
-      // --- PERBAIKAN: Selalu tambahkan mapelKelasData ---
       parsedCache.data.mapelKelasData = mapelKelasData;
-      // --- AKHIR PERBAIKAN ---
       return parsedCache;
     }
 
@@ -2415,27 +2411,26 @@ function getNilaiUjianGridData(token, tipeUjian) {
       cekWaktu = cekWaktuInputGuru(ss);
     }
 
-    const sheetSiswa = getSiswaSheet(ss);
-    const dataSiswa = sheetSiswa.getDataRange().getValues();
-    dataSiswa.shift();
+    // --- PERBAIKAN: GANTI BACA SHEET DENGAN HELPER CACHE ---
+    // HAPUS: const sheetSiswa = getSiswaSheet(ss);
+    // HAPUS: const dataSiswa = sheetSiswa.getDataRange().getValues();
+    // HAPUS: dataSiswa.shift();
+    // HAPUS: let siswaList = dataSiswa.map(row => ({...}));
     
-    // --- PERBAIKAN: Filter siswaList untuk guru ---
-    let siswaList = dataSiswa.map(row => ({
-      id: row[0], nama: row[1], nisn: row[2], kelas: row[7], urutan: Number(row[8] || 0)
-    }));
+    // GANTI DENGAN:
+    let siswaList = _getSiswaInternal(spreadsheetID, sekolahID);
+    // --- AKHIR PERBAIKAN ---
 
     if (isGuru) {
       siswaList = siswaList.filter(siswa => assignedKelasSet.has(siswa.kelas));
     }
+    // Siswa sudah di-sort oleh _getSiswaInternal, tidak perlu sort ulang
 
-    siswaList.sort((a, b) => {
-      const kc = a.kelas.localeCompare(b.kelas);
-      return kc !== 0 ? kc : a.urutan - b.urutan;
-    });
+    // --- PERBAIKAN: GANTI DENGAN HELPER CACHE MAPEL ---
+    // HAPUS: let mapelListFull = getMapelDataInternal(ss, sekolahID);
+    // GANTI DENGAN:
+    let mapelListFull = _getMapelInternal(ss, sekolahID);
     // --- AKHIR PERBAIKAN ---
-
-
-    let mapelListFull = getMapelDataInternal(ss, sekolahID);
     
     if (isGuru) {
       mapelListFull = mapelListFull.filter(m => assignedMapelSet.has(m.id));
@@ -2461,9 +2456,7 @@ function getNilaiUjianGridData(token, tipeUjian) {
         nilaiData,
         isInputDiizinkan: cekWaktu.diizinkan,
         pesanInput: cekWaktu.pesan,
-        // --- TAMBAHKAN INI ---
         mapelKelasData: mapelKelasData 
-        // --- AKHIR TAMBAHAN ---
       } 
     };
     scriptCache.put(cacheKey, JSON.stringify(response), 600);
@@ -2665,37 +2658,40 @@ function hitungNilaiRekap(nilaiUM, nilaiUP) {
   }
 }
 
+// Salin dan GANTI fungsi getRekapitulasiNilaiData() Anda dengan yang ini
 function getRekapitulasiNilaiData(token) {
   try {
     const { sessionData, spreadsheetID } = validateAdminSession(token);
     const sekolahID = sessionData.sekolahID;
     
-    // --- PERBAIKAN ---
     const scriptCache = CacheService.getScriptCache();
-    // --- AKHIR PERBAIKAN ---
-
     const cacheKey = REKAP_NILAI_CACHE_KEY + "_" + sekolahID;
-    
-    // --- PERBAIKAN ---
     const cachedData = scriptCache.get(cacheKey);
-    // --- AKHIR PERBAIKAN ---
 
     if (cachedData != null) {
       return JSON.parse(cachedData);
     }
+    
     const ss = SpreadsheetApp.openById(spreadsheetID);
-    const siswaData = getSiswa(token);
-    if (siswaData.status !== 'sukses') throw new Error(siswaData.message);
-    const siswaList = siswaData.siswa.map(s => ({ id: s.id, nama: s.nama, nisn: s.nisn, kelas: s.kelas }));
-    const mapelListFull = getMapelDataInternal(ss, sekolahID);
+
+    // --- PERBAIKAN: GANTI BACA SHEET DENGAN HELPER CACHE ---
+    // HAPUS: const siswaData = getSiswa(token);
+    // HAPUS: if (siswaData.status !== 'sukses') throw new Error(siswaData.message);
+    // HAPUS: const siswaList = siswaData.siswa.map(s => ({ id: s.id, nama: s.nama, nisn: s.nisn, kelas: s.kelas }));
+    // GANTI DENGAN:
+    const siswaList = _getSiswaInternal(spreadsheetID, sekolahID).map(s => ({ id: s.id, nama: s.nama, nisn: s.nisn, kelas: s.kelas }));
+    
+    // HAPUS: const mapelListFull = getMapelDataInternal(ss, sekolahID);
+    // GANTI DENGAN:
+    const mapelListFull = _getMapelInternal(ss, sekolahID);
+    // --- AKHIR PERBAIKAN ---
+
     const { mapelList, nilaiRekapMap } = getRekapUjianInternal(ss, siswaList, mapelListFull);
     const nilaiRekapDataObj = {};
     nilaiRekapMap.forEach((value, key) => { nilaiRekapDataObj[key] = value; });
     const response = { status: "sukses", data: { siswaList, mapelList, nilaiRekapData: nilaiRekapDataObj } };
     
-    // --- PERBAIKAN ---
     scriptCache.put(cacheKey, JSON.stringify(response), 600);
-    // --- AKHIR PERBAIKAN ---
     
     return response;
   } catch (e) {
@@ -2703,32 +2699,37 @@ function getRekapitulasiNilaiData(token) {
   }
 }
 
+// Salin dan GANTI fungsi getRekapitulasiNilaiRaporData() Anda dengan yang ini
 function getRekapitulasiNilaiRaporData(token) {
   try {
     const { sessionData, spreadsheetID } = validateAdminSession(token);
     const sekolahID = sessionData.sekolahID;
     
-    // --- PERBAIKAN ---
     const scriptCache = CacheService.getScriptCache();
-    // --- AKHIR PERBAIKAN ---
-
     const cacheKey = REKAP_NILAI_RAPOR_CACHE_KEY + "_" + sekolahID;
-    
-    // --- PERBAIKAN ---
     const cachedData = scriptCache.get(cacheKey);
-    // --- AKHIR PERBAIKAN ---
 
     if (cachedData != null) {
       return JSON.parse(cachedData);
     }
+    
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const semesterListData = getSemesterList(token);
     if (semesterListData.status !== 'sukses') throw new Error(semesterListData.message);
     const semesterIds = semesterListData.semesterList.map(s => s.id);
-    const siswaData = getSiswa(token);
-    if (siswaData.status !== 'sukses') throw new Error(siswaData.message);
-    const siswaList = siswaData.siswa.map(s => ({ id: s.id, nama: s.nama, nisn: s.nisn, kelas: s.kelas }));
-    const mapelListFull = getMapelDataInternal(ss, sekolahID);
+    
+    // --- PERBAIKAN: GANTI BACA SHEET DENGAN HELPER CACHE ---
+    // HAPUS: const siswaData = getSiswa(token);
+    // HAPUS: if (siswaData.status !== 'sukses') throw new Error(siswaData.message);
+    // HAPUS: const siswaList = siswaData.siswa.map(s => ({ id: s.id, nama: s.nama, nisn: s.nisn, kelas: s.kelas }));
+    // GANTI DENGAN:
+    const siswaList = _getSiswaInternal(spreadsheetID, sekolahID).map(s => ({ id: s.id, nama: s.nama, nisn: s.nisn, kelas: s.kelas }));
+    
+    // HAPUS: const mapelListFull = getMapelDataInternal(ss, sekolahID);
+    // GANTI DENGAN:
+    const mapelListFull = _getMapelInternal(ss, sekolahID);
+    // --- AKHIR PERBAIKAN ---
+    
     const { mapelList, nilaiRekapMap } = getRekapRaporInternal(ss, siswaList, mapelListFull, semesterIds);
     const nilaiRekapDataObj = {};
     nilaiRekapMap.forEach((value, key) => { nilaiRekapDataObj[key] = value; });
@@ -2737,9 +2738,7 @@ function getRekapitulasiNilaiRaporData(token) {
       data: { siswaList, mapelList, nilaiRekapData: nilaiRekapDataObj, jumlahSemester: semesterIds.length }
     };
     
-    // --- PERBAIKAN ---
     scriptCache.put(cacheKey, JSON.stringify(response), 600);
-    // --- AKHIR PERBAIKAN ---
 
     return response;
   } catch (e) {
@@ -3331,7 +3330,13 @@ function prosesUploadExcelNilaiRapor(token, fileData, semesterIdFromModal) {
   }
 }
 
-function getMapelDataInternal(ss, sekolahID) {
+// HAPUS fungsi getMapelDataInternal() lama Anda
+// dan TAMBAHKAN fungsi _getMapelInternal() ini
+/**
+ * [INTERNAL HELPER] Mengambil data mapel dari cache atau sheet.
+ * (Sebelumnya bernama getMapelDataInternal)
+ */
+function _getMapelInternal(ss, sekolahID) {
   const cacheKey = MAPEL_CACHE_KEY + "_" + sekolahID;
   
   // --- PERBAIKAN ---
@@ -3342,6 +3347,8 @@ function getMapelDataInternal(ss, sekolahID) {
   if (cachedMapel != null) {
     return JSON.parse(cachedMapel);
   }
+  
+  Logger.log("CACHE MISS: _getMapelInternal untuk " + sekolahID);
   const sheetMapel = getMapelSheet(ss);
   const data = sheetMapel.getDataRange().getValues();
   data.shift();
@@ -3522,6 +3529,7 @@ function getNilaiIjazahData(token) {
   }
 }
 
+// Salin dan GANTI fungsi recalculateIjazahData() Anda dengan yang ini
 function recalculateIjazahData(token) {
   let spreadsheetID, sessionData;
   try {
@@ -3540,12 +3548,21 @@ function recalculateIjazahData(token) {
       if (s[0] === 'Jumlah_Semester') jmlSemester = s[1];
     });
 
-    const sheetSiswa = getSiswaSheet(ss);
-    const siswaData = sheetSiswa.getDataRange().getValues();
-    siswaData.shift();
-    const siswaList = siswaData.map(s => ({ id: s[0], nama: s[1], nisn: s[2], kelas: s[7] }));
-
-    const mapelListFull = getMapelDataInternal(ss, sessionData.sekolahID);
+    // --- PERBAIKAN 2.2 (SUDAH DITERAPKAN) ---
+    // Menggunakan helper cache _getSiswaInternal
+    // Kita butuh data lengkap (termasuk tglLahir), jadi panggil _getSiswaInternal
+    const siswaListFull = _getSiswaInternal(spreadsheetID, sessionData.sekolahID);
+    const siswaList = siswaListFull.map(s => ({ 
+        id: s.id, 
+        nama: s.nama, 
+        nisn: s.nisn, 
+        kelas: s.kelas 
+    }));
+    
+    // Menggunakan helper cache _getMapelInternal
+    const mapelListFull = _getMapelInternal(ss, sessionData.sekolahID);
+    // --- AKHIR PERBAIKAN 2.2 ---
+    
     const mapelIjazah = mapelListFull.filter(m => m.isUS || m.isUP);
     
     const { nilaiRekapMap: nilaiUjian } = getRekapUjianInternal(ss, siswaList, mapelListFull);
@@ -3563,14 +3580,33 @@ function recalculateIjazahData(token) {
     const { nilaiRekapMap: nilaiRapor } = getRekapRaporInternal(ss, siswaList, mapelListFull, semesterIds);
 
     const dataToAppend = [];
+    
+    // --- PERBAIKAN 2.3: Buat rekapMap di sini ---
+    const rekapMap = new Map();
+    // --- AKHIR PERBAIKAN 2.3 ---
+
     siswaList.forEach(siswa => {
+      // --- PERBAIKAN 2.3 ---
+      let sum = 0;
+      let count = 0;
+      // --- AKHIR PERBAIKAN 2.3 ---
+
       mapelIjazah.forEach(mapel => {
         const key = `${siswa.id}_${mapel.id}`;
         const nU = nilaiUjian.get(key) || 0;
         const nR = nilaiRapor.get(key) || 0;
         const final = (nU * (bobotUjian/100)) + (nR * (bobotRapor/100));
         dataToAppend.push([siswa.id, mapel.id, nU, nR, nU*(bobotUjian/100), nR*(bobotRapor/100), final]);
+        
+        // --- PERBAIKAN 2.3: Kumpulkan nilai akhir ---
+        sum += final;
+        count++;
+        // --- AKHIR PERBAIKAN 2.3 ---
       });
+
+      // --- PERBAIKAN 2.3: Simpan data rekap untuk dikirim ---
+      rekapMap.set(siswa.id, { sum: sum, count: count });
+      // --- AKHIR PERBAIKAN 2.3 ---
     });
 
     let sheetCache = ss.getSheetByName(SHEET_CACHE_IJAZAH);
@@ -3580,12 +3616,38 @@ function recalculateIjazahData(token) {
     sheetCache.appendRow(['SiswaID', 'MapelID', 'UjianAsli', 'RaporAsli', 'UjianBobot', 'RaporBobot', 'IjazahFinal']);
     if (dataToAppend.length > 0) sheetCache.getRange(3, 1, dataToAppend.length, 7).setValues(dataToAppend);
 
+    // --- PERBAIKAN 2.3: Buat siswaMap dan nisnList di sini ---
+    const siswaMap = new Map();
+    const nisnList = [];
+    // Gunakan siswaListFull dari _getSiswaInternal() karena mengandung tglLahir
+    siswaListFull.forEach(siswa => { 
+        let nisn = String(siswa.nisn).trim().replace("'", "");
+        const tglLahir = siswa.tglLahir; // Ambil tglLahir dari helper
+        if (nisn && tglLahir && siswa.nama) {
+          siswaMap.set(nisn, { id: siswa.id, dob: tglLahir, nama: siswa.nama });
+          nisnList.push(nisn);
+        }
+    });
+    // --- AKHIR PERBAIKAN 2.3 ---
+
     const db = SpreadsheetApp.openById(MASTER_KELULUSAN_DB_ID);
     const sheetHasil = db.getSheetByName('Sheet_Hasil_Publikasi');
     const hasilData = sheetHasil.getDataRange().getValues();
     for (let i = 1; i < hasilData.length; i++) {
       if (hasilData[i][0] === sessionData.sekolahID) {
-        _internalPublishLogic(spreadsheetID, sessionData.sekolahID, sessionData.namaSekolah, hasilData[i][1]);
+        
+        // --- PERUBAHAN KRUSIAL 2.3: Kirim data sebagai parameter ---
+        _internalPublishLogic(
+            spreadsheetID, 
+            sessionData.sekolahID, 
+            sessionData.namaSekolah, 
+            hasilData[i][1],
+            siswaMap,   // <-- Data baru
+            nisnList,   // <-- Data baru
+            rekapMap,   // <-- Data baru
+            kkm         // <-- Data baru
+        );
+        // --- AKHIR PERUBAHAN 2.3 ---
         break;
       }
     }
@@ -3855,20 +3917,26 @@ function clearAllCaches(token) {
   }
 }
 
+// Salin dan GANTI fungsi getValidationData() Anda dengan yang ini
 function getValidationData(token) {
   try {
-    const { spreadsheetID } = validateAdminSession(token);
+    const { sessionData, spreadsheetID } = validateAdminSession(token);
     const ss = SpreadsheetApp.openById(spreadsheetID);
-    const siswaSheet = getSiswaSheet(ss);
-    const siswaDataValues = siswaSheet.getDataRange().getValues();
-    siswaDataValues.shift();
-    const siswaList = siswaDataValues.map(s => ({ id: s[0], nama: s[1], nisn: s[2], kelas: s[7], urutan: s[8] }))
-      .sort((a, b) => a.kelas.localeCompare(b.kelas) || (Number(a.urutan) || 0) - (Number(b.urutan) || 0));
-    const session = validateAdminSession(token);
-    const mapelListFull = getMapelDataInternal(ss, session.sessionData.sekolahID);
+    
+    // --- PERBAIKAN: GANTI BACA SHEET DENGAN HELPER CACHE ---
+    // HAPUS: const siswaSheet = getSiswaSheet(ss); ... siswaDataValues.shift(); ...
+    // GANTI DENGAN:
+    const siswaList = _getSiswaInternal(spreadsheetID, sessionData.sekolahID);
+    
+    // HAPUS: const mapelListFull = getMapelDataInternal(ss, session.sessionData.sekolahID);
+    // GANTI DENGAN:
+    const mapelListFull = _getMapelInternal(ss, sessionData.sekolahID);
+    // --- AKHIR PERBAIKAN ---
+
     const requiredMapelList = mapelListFull.filter(m => m.isUS === true || m.isUP === true);
     const requiredMapelIds = new Set(requiredMapelList.map(m => m.id));
     const mapelInfoMap = new Map(requiredMapelList.map(m => [m.id, { isUS: m.isUS, isUP: m.isUP }]));
+    
     const semesterListData = getSemesterList(token);
     if (semesterListData.status !== 'sukses') throw new Error("Gagal mengambil daftar semester.");
     const requiredSemesterList = semesterListData.semesterList;
@@ -3877,6 +3945,7 @@ function getValidationData(token) {
       return { ...sem, shortCode: (parts.length === 2) ? `${parts[0].replace('K', '')}.${parts[1].replace('S', '')}` : '' };
     });
     const requiredSemesterIdSet = new Set(requiredSemesterList.map(s => s.id));
+    
     const nilaiRaporSheet = getNilaiRaporSheet(ss);
     const raporDataValues = nilaiRaporSheet.getDataRange().getValues();
     raporDataValues.shift();
@@ -3888,6 +3957,7 @@ function getValidationData(token) {
         raporMap.get(row[0]).get(row[1]).set(row[2], { P: (row[3] != null && row[3] !== ""), K: (row[4] != null && row[4] !== "") });
       }
     });
+    
     const nilaiUjianSheet = getNilaiUjianSheet(ss);
     const ujianDataValues = nilaiUjianSheet.getDataRange().getValues();
     ujianDataValues.shift();
@@ -3898,9 +3968,11 @@ function getValidationData(token) {
         ujianMap.get(row[0]).set(row[1], { UM: (row[2] != null && row[2] !== ""), UP: (row[3] != null && row[3] !== "") });
       }
     });
+    
     const validationResults = {};
     let globalNeedsUM = false, globalNeedsUP = false;
     mapelInfoMap.forEach(info => { if (info.isUS) globalNeedsUM = true; if (info.isUP) globalNeedsUP = true; });
+    
     siswaList.forEach(siswa => {
       const resultSiswa = { rapor: {}, ujian: {} };
       if (globalNeedsUM) resultSiswa.ujian.UM = true;
@@ -4013,13 +4085,17 @@ function validateAdminSession(token) {
   return { sessionData, spreadsheetID: sessionData.spreadsheetID };
 }
 
+// Salin dan GANTI fungsi _internalPublishLogic() Anda dengan yang ini
 /**
  * FUNGSI HELPER BARU
  * Berisi logika inti untuk mempublikasikan hasil.
- * Dipanggil oleh publishKelulusan() dan recalculateIjazahData().
- * Mengasumsikan validasi sesi dan lock sudah ditangani oleh pemanggil.
+ * VERSI REFACTOR 2.3: Menerima data yang sudah dihitung sebagai parameter
+ * untuk menghindari pembacaan ganda.
  */
-function _internalPublishLogic(spreadsheetID, sekolahID, namaSekolah, tanggalPengumumanISO) {
+function _internalPublishLogic(
+    spreadsheetID, sekolahID, namaSekolah, tanggalPengumumanISO,
+    siswaMap, nisnList, rekapMap, kkm // <-- PARAMETER BARU DARI PERBAIKAN 2.3
+) {
   // --- PERBAIKAN BLOK GATING ---
   // Cek status donasi.
   const masterSS = SpreadsheetApp.openById(MASTER_SHEET_ID);
@@ -4037,59 +4113,30 @@ function _internalPublishLogic(spreadsheetID, sekolahID, namaSekolah, tanggalPen
   if (donasiStatus !== "APPROVED") {
     // Jangan lempar error, cukup hentikan fungsi secara diam-diam.
     Logger.log(`_internalPublishLogic dihentikan untuk ${sekolahID} (Donasi: ${donasiStatus}). Kalkulasi nilai tetap berhasil.`);
-    return; // <== INI ADALAH PERUBAHAN UTAMA
+    return;
   }
   // --- AKHIR PERBAIKAN BLOK ---
 
-  const ss = SpreadsheetApp.openById(spreadsheetID);
+  // --- PERUBAHAN KRUSIAL 2.3: HAPUS BLOK PEMBACAAN DATA ---
+  // const ss = SpreadsheetApp.openById(spreadsheetID);
+  // const siswaListFull = _getSiswaInternal(spreadsheetID, sekolahID);
+  // ... (logika membuat siswaMap & nisnList) ...
+  // const sheetCacheIjazah = ss.getSheetByName(SHEET_CACHE_IJAZAH);
+  // ... (logika membaca kkm dan ijazahData) ...
+  // ... (logika membuat rekapMap) ...
+  // --- BLOK DI ATAS SEPENUHNYA DIHAPUS ---
+  // --- AKHIR PERUBAHAN 2.3 ---
 
-  // 1. Ambil data siswa (NISN, Nama, Tgl Lahir)
-  const sheetSiswa = getSiswaSheet(ss);
-  const siswaData = sheetSiswa.getDataRange().getValues();
-  siswaData.shift(); 
-  const siswaMap = new Map();
-  const nisnList = [];
-  siswaData.forEach(row => {
-    let nisn = String(row[2]).trim();
-    if (nisn.startsWith("'")) {
-      nisn = nisn.substring(1);
-    }
-    const namaSiswa = row[1];
-    const tglLahir = (row[6] instanceof Date) ? Utilities.formatDate(row[6], Session.getScriptTimeZone(), "yyyy-MM-dd") : row[6];
-    if (nisn && tglLahir && namaSiswa) {
-      siswaMap.set(nisn, { id: row[0], dob: tglLahir, nama: namaSiswa });
-      nisnList.push(nisn);
-    }
-  });
-
-  // 2. Ambil data nilai akhir (dari cache yang sudah di-recalculate)
-  const sheetCacheIjazah = ss.getSheetByName(SHEET_CACHE_IJAZAH);
-  if (!sheetCacheIjazah) {
-    throw new Error("Data Ijazah belum pernah dikalkulasi. Silakan hitung ulang nilai ijazah terlebih dahulu.");
-  }
-  const kkm = sheetCacheIjazah.getRange('E1').getValue();
-  const ijazahData = sheetCacheIjazah.getRange('A3:G' + sheetCacheIjazah.getLastRow()).getValues();
-  
-  const rekapMap = new Map();
-  ijazahData.forEach(row => {
-    const siswaId = row[0];
-    const finalNilai = row[6]; // Kolom G (IjazahFinal)
-    if (!rekapMap.has(siswaId)) {
-      rekapMap.set(siswaId, { sum: 0, count: 0 });
-    }
-    const data = rekapMap.get(siswaId);
-    data.sum += finalNilai;
-    data.count++;
-  });
 
   // 3. Tentukan status kelulusan
+  // Logika ini sekarang menggunakan data dari PARAMETER (siswaMap, rekapMap, kkm)
   const hasilKelulusan = {};
   siswaMap.forEach((data, nisn) => {
     const rekap = rekapMap.get(data.id);
     let status = 'TIDAK LULUS'; // Default
     if (rekap && rekap.count > 0) {
       const average = rekap.sum / rekap.count;
-      if (average >= kkm) {
+      if (average >= kkm) { // <-- kkm dari parameter
         status = 'LULUS';
       }
     }
@@ -4133,6 +4180,7 @@ function _internalPublishLogic(spreadsheetID, sekolahID, namaSekolah, tanggalPen
     sheetIndex.deleteRow(rowNum);
   });
   
+  // Gunakan nisnList dari PARAMETER
   const nisnRowsToAdd = nisnList.map(nisn => ["'" + nisn, sekolahID]); 
   if (nisnRowsToAdd.length > 0) {
     sheetIndex.getRange(sheetIndex.getLastRow() + 1, 1, nisnRowsToAdd.length, 2).setValues(nisnRowsToAdd);
@@ -4146,7 +4194,7 @@ function _internalPublishLogic(spreadsheetID, sekolahID, namaSekolah, tanggalPen
   // Bangun ulang cache publik agar data baru segera tersedia
   rebuildKelulusanCacheFromDB(); 
 
-  // Kembalikan jumlah siswa untuk pesan sukses
+  // Kembalikan jumlah siswa untuk pesan sukses (gunakan nisnList dari PARAMETER)
   return nisnList.length;
 }
 
@@ -5410,4 +5458,53 @@ function verifikasiDonasi(token, sekolahID, isApproved, alasan) {
   } finally {
     lock.releaseLock();
   }
+}
+
+/**
+ * [INTERNAL HELPER BARU]
+ * Mengambil data siswa dari cache atau (jika cache kosong) dari sheet.
+ * Ini menggantikan logika yang sebelumnya terduplikat di banyak fungsi.
+ */
+function _getSiswaInternal(spreadsheetID, sekolahID) {
+  const cacheKey = SISWA_CACHE_KEY + "_" + sekolahID;
+  const scriptCache = CacheService.getScriptCache();
+  const cachedSiswa = scriptCache.get(cacheKey);
+
+  if (cachedSiswa != null) {
+    // 1. Ditemukan di cache, kembalikan data cache
+    return JSON.parse(cachedSiswa);
+  }
+
+  // 2. Tidak ada di cache, ambil dari sheet
+  Logger.log("CACHE MISS: _getSiswaInternal untuk " + sekolahID);
+  const ss = SpreadsheetApp.openById(spreadsheetID);
+  const sheet = getSiswaSheet(ss);
+  const data = sheet.getDataRange().getValues();
+  data.shift(); // Hapus header
+  
+  const siswaList = data.map(row => {
+    const idNum = parseInt((row[0] || 'SIS-0').split('-')[1] || 0);
+    return {
+      id: row[0],
+      nama: row[1],
+      nisn: row[2],
+      nisLokal: row[3] || '',
+      jk: row[4] || '',
+      tempatLahir: row[5] || '',
+      tglLahir: (row[6] instanceof Date) ? Utilities.formatDate(row[6], Session.getScriptTimeZone(), "yyyy-MM-dd") : (row[6] || ''),
+      kelas: row[7] || '',
+      urutan: row[8] || idNum
+    };
+  });
+  
+  // Urutkan data sebelum disimpan ke cache
+  siswaList.sort((a, b) => {
+    const kelasCompare = a.kelas.localeCompare(b.kelas);
+    if (kelasCompare !== 0) return kelasCompare;
+    return (Number(a.urutan) || 0) - (Number(b.urutan) || 0);
+  });
+  
+  // 3. Simpan ke cache untuk panggilan berikutnya
+  scriptCache.put(cacheKey, JSON.stringify(siswaList), 3600); // Cache 1 jam
+  return siswaList;
 }
