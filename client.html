@@ -605,7 +605,8 @@
       'halaman-nilai-ijazah', 'halaman-validasi-nilai',
       'halaman-superadmin',
       'halaman-kelola-kelulusan', 'halaman-hasil-siswa',
-      'halaman-guru', 'halaman-donasi'
+      'halaman-guru', 'halaman-donasi',
+      'halaman-proses-kelulusan' // <--- PERBAIKAN DI SINI
     ];
     
     const authSubPages = [
@@ -642,6 +643,7 @@
     
     // --- TAMBAHAN BARU ---
     hideMessage('pengaturan-guru-message');
+    hideMessage('proses-kelulusan-message'); // <--- PERBAIKAN DI SINI
     // --- AKHIR TAMBAHAN ---
 
     const targetElement = document.getElementById(idHalaman);
@@ -1225,6 +1227,22 @@
         showToast("Link file tidak ditemukan.", 'gagal');
       }
     });
+
+    document.getElementById('btn-buka-proses-kelulusan').addEventListener('click', (e) => { // <-- Tambahkan 'e'
+        // Cek apakah kartu memiliki class 'card-disabled'
+        if (e.currentTarget.classList.contains('card-disabled')) {
+            // Jika ya (non-premium), alihkan ke halaman donasi
+            handleNavigationConfirm(bukaHalamanDonasi);
+        } else {
+            // Jika tidak (premium aktif), buka halaman proses kelulusan
+            handleNavigationConfirm(bukaHalamanProsesKelulusan);
+        }
+    });
+    document.getElementById('btn-kembali-ke-dashboard-13').addEventListener('click', () => tampilHalaman('halaman-utama'));
+    document.getElementById('input-konfirmasi-nama-sekolah').addEventListener('input', validasiKonfirmasiNamaSekolah);
+    document.getElementById('btn-proses-kelulusan').addEventListener('click', jalankanProsesKelulusan);
+
+    document.getElementById('btn-cetak-kartu-siswa').addEventListener('click', konfirmasiCetakKartuSiswa);
 
     // Listener dinamis untuk tombol verifikasi Superadmin
     document.getElementById('superadmin-donasi-list').addEventListener('click', (e) => {
@@ -8779,7 +8797,7 @@ function populateSiswaFilters() {
 
   /**
    * Dipanggil setelah server berhasil membuat data kartu.
-   * VERSI REVISI: Ukuran diperbesar (160px) dan Level Koreksi (H)
+   * VERSI REVISI: Menggunakan <p> Teks Murni
    */
   function onCetakKartuSuccess(response) {
     setLoading(false);
@@ -8815,12 +8833,15 @@ function populateSiswaFilters() {
       cardsHtml += `
         <div class="login-card">
           <h3>Kartu Login Guru</h3>
-          <a class"login-card-qr" 
+          <a class="login-card-qr"
              id="qr-guru-${i}" 
              href="${websiteUrl}" 
              target="_blank" 
              title="Pindai kode ini, atau klik untuk membuka link">
           </a>
+          <p style="font-size: 12px; color: #333; margin: 5px 0 0 0; font-family: sans-serif; font-weight: 500;">
+            Link: s.id/aplikasi-ijazah
+          </p>
           <div class="login-card-info">
             <strong>${guru.nama}</strong><br>
             NPSN: <strong>${npsn}</strong><br>
@@ -8844,18 +8865,11 @@ function populateSiswaFilters() {
             qrElement.innerHTML = ''; 
             new QRCode(qrElement, {
               text: websiteUrl,
-              
-              // --- PERUBAHAN DI SINI ---
               width: 160, 
               height: 160,
-              // --- AKHIR PERUBAHAN ---
-
               colorDark : "#000000",
               colorLight : "#ffffff",
-
-              // --- PERUBAHAN DI SINI (Kembali ke 'H') ---
               correctLevel : QRCode.CorrectLevel.H 
-              // --- AKHIR PERUBAHAN ---
             });
           } else {
             console.warn(`Elemen qr-guru-${i} tidak ditemukan.`);
@@ -8881,6 +8895,7 @@ function populateSiswaFilters() {
     const tabGuru = document.getElementById('tab-btn-guru');
     const tabSiswa = document.getElementById('tab-btn-siswa');
     const btnKelulusan = document.getElementById('btn-buka-kelola-kelulusan'); 
+    const btnProsesKelulusan = document.getElementById('btn-buka-proses-kelulusan'); // <-- BARIS BARU
     
     if (btnGuru) {
       const stamp = btnGuru.querySelector('.premium-stamp');
@@ -8907,6 +8922,19 @@ function populateSiswaFilters() {
         if (stamp) stamp.style.display = 'block';
       }
     }
+
+    // --- BLOK BARU UNTUK PROSES KELULUSAN ---
+    if (btnProsesKelulusan) {
+      const stamp = btnProsesKelulusan.querySelector('.premium-stamp');
+      if (isPremium) {
+        btnProsesKelulusan.classList.remove('card-disabled');
+        if (stamp) stamp.style.display = 'none';
+      } else {
+        btnProsesKelulusan.classList.add('card-disabled');
+        if (stamp) stamp.style.display = 'block';
+      }
+    }
+    // --- AKHIR BLOK BARU ---
     
     if (tabGuru) {
       tabGuru.disabled = !isPremium;
@@ -9589,6 +9617,245 @@ function populateSiswaFilters() {
         btn.style.cursor = 'pointer';
       }
     });
+  }
+
+  /**
+   * [BARU] Membuka halaman Proses Kelulusan.
+   */
+  function bukaHalamanProsesKelulusan() {
+    tampilHalaman('halaman-proses-kelulusan');
+    hideMessage('proses-kelulusan-message');
+    
+    const inputKonfirmasi = document.getElementById('input-konfirmasi-nama-sekolah');
+    const btnProses = document.getElementById('btn-proses-kelulusan');
+    const labelNama = document.getElementById('nama-sekolah-untuk-konfirmasi');
+    const hiddenNama = document.getElementById('nama-sekolah-hidden-konfirmasi');
+    
+    inputKonfirmasi.value = '';
+    btnProses.disabled = true;
+    labelNama.innerText = 'Memuat...';
+    hiddenNama.value = '';
+
+    // Panggil server untuk mendapatkan nama sekolah yang benar
+    setLoading(true, 'Memuat data sekolah...', false, true);
+    google.script.run
+      .withSuccessHandler(onNamaSekolahForProsesLoaded)
+      .withFailureHandler(onGagal)
+      .getNamaSekolah(getToken()); // Kita perlu fungsi backend baru
+  }
+
+  /**
+   * [BARU] Callback setelah nama sekolah didapat.
+   */
+  function onNamaSekolahForProsesLoaded(response) {
+    setLoading(false);
+    if (response.status === 'sukses') {
+      document.getElementById('nama-sekolah-untuk-konfirmasi').innerText = response.namaSekolah;
+      document.getElementById('nama-sekolah-hidden-konfirmasi').value = response.namaSekolah;
+    } else {
+      document.getElementById('nama-sekolah-untuk-konfirmasi').innerText = '(Gagal Memuat)';
+      showMessage('proses-kelulusan-message', 'Gagal memuat nama sekolah. Tidak dapat melanjutkan.', true);
+    }
+  }
+
+  /**
+   * [BARU] Memvalidasi input konfirmasi nama sekolah.
+   */
+  function validasiKonfirmasiNamaSekolah() {
+    const inputKonfirmasi = document.getElementById('input-konfirmasi-nama-sekolah').value;
+    const namaSekolahAsli = document.getElementById('nama-sekolah-hidden-konfirmasi').value;
+    const btnProses = document.getElementById('btn-proses-kelulusan');
+    
+    if (namaSekolahAsli && inputKonfirmasi === namaSekolahAsli) {
+      btnProses.disabled = false;
+    } else {
+      btnProses.disabled = true;
+    }
+  }
+
+  /**
+   * [BARU] Menjalankan proses utama: 1. Backup, 2. Hapus.
+   */
+  function jalankanProsesKelulusan() {
+    // Langkah 1: Panggil backup
+    setLoading(true, 'Membuat file backup database... Ini mungkin perlu waktu beberapa saat.', true, true);
+    hideMessage('proses-kelulusan-message');
+    
+    google.script.run
+      .withSuccessHandler(onBackupDownloaded) // Handler kustom
+      .withFailureHandler(onGagal) // Handler onGagal biasa
+      .getBackupDatabaseExcel(getToken()); // Fungsi backend baru
+  }
+
+  /**
+   * [BARU] Callback setelah file backup berhasil dibuat.
+   */
+  function onBackupDownloaded(response) {
+    setLoading(false); // Matikan loading "Membuat backup..."
+    
+    if (response.status === 'sukses') {
+      // 1. Picu download di browser
+      try {
+        const dataUrl = `data:${response.mimeType};base64,${response.base64}`;
+        const link = document.createElement('a');
+        link.setAttribute('href', dataUrl);
+        link.setAttribute('download', response.fileName);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (e) {
+        showMessage('proses-kelulusan-message', 'Gagal memicu download: ' + e.message, true);
+        return; // Hentikan proses jika download gagal
+      }
+      
+      // 2. Tampilkan toast perantara
+      showToast("Backup berhasil diunduh. Memulai pembersihan data...", 'sukses', 3000);
+      
+      // 3. Panggil proses penghapusan data
+      setLoading(true, 'Menghapus data siswa dan nilai... Harap jangan tutup halaman.', true, true);
+      
+      google.script.run
+        .withSuccessHandler(onPembersihanSelesai)
+        .withFailureHandler(onGagal)
+        .hapusSemuaDataSiswaDanNilai(getToken()); // Fungsi backend baru
+        
+    } else {
+      showMessage('proses-kelulusan-message', 'Gagal membuat file backup: ' + response.message, true);
+    }
+  }
+
+  /**
+   * [BARU] Callback setelah semua data dihapus.
+   */
+  function onPembersihanSelesai(response) {
+    setLoading(false);
+    
+    if (response.status === 'sukses') {
+      // Bersihkan semua cache di sisi klien
+      globalSiswaList = [];
+      globalGuruList = []; // Juga hapus data guru
+      globalKelasListCache = [];
+      globalNilaiGridCacheUM = null;
+      globalNilaiGridCachePraktek = null;
+      globalNilaiRaporGridCache.clear();
+      globalIjazahData = { siswaList: [], mapelList: [], dataUjian: {}, dataRapor: {}, dataIjazah: {} };
+      
+      // Tampilkan notifikasi sukses dan kembali ke dasbor
+      showToast('Proses Kelulusan Selesai. Data siswa, guru, dan nilai telah dihapus.', 'sukses', 5000);
+      tampilHalaman('halaman-utama');
+      
+    } else {
+      showMessage('proses-kelulusan-message', 'Gagal menghapus data: ' + response.message, true);
+    }
+  }
+
+  /**
+   * [BARU] Menampilkan konfirmasi sebelum mencetak kartu siswa.
+   */
+  function konfirmasiCetakKartuSiswa() {
+    const title = "Konfirmasi Cetak Kartu Siswa";
+    const message = `
+      Anda akan membuat kartu cek kelulusan untuk <strong>semua siswa</strong>.
+      <br><br>
+      Kartu ini akan berisi Nama, NISN, dan Tanggal Lahir yang digunakan siswa untuk login. Siswa yang tidak memiliki NISN atau Tgl. Lahir tidak akan dicetak.
+      <br><br>
+      Yakin ingin melanjutkan?
+    `;
+    showConfirmationModal(title, message, jalankanCetakKartuSiswa, 'primary'); // 'primary' (biru)
+  }
+
+  /**
+   * [BARU] Memanggil server untuk mendapatkan data kartu siswa.
+   */
+  function jalankanCetakKartuSiswa() {
+    setLoading(true, 'Membuat data kartu siswa...', true, true);
+    google.script.run
+      .withSuccessHandler(onCetakKartuSiswaSuccess)
+      .withFailureHandler(onGagal)
+      .generateSiswaLoginCards(getToken());
+  }
+
+  /**
+   * [BARU - DIPERBARUI] Dipanggil setelah server berhasil membuat data kartu siswa.
+   */
+  function onCetakKartuSiswaSuccess(response) {
+    setLoading(false);
+    if (response.status !== 'sukses' || !response.cardData) {
+      onGagal({ message: response.message || "Gagal mengambil data kartu." });
+      return;
+    }
+    
+    // Dapatkan URL dari respons, atau buat dari globalAppUrl jika tidak ada
+    const websiteUrl = response.websiteUrl || (globalAppUrl + '#login-siswa');
+    const cardData = response.cardData;
+    const container = document.getElementById('kartu-container');
+    const page = document.getElementById('halaman-cetak-kartu');
+    container.innerHTML = ''; 
+
+    if (cardData.length === 0) {
+      container.innerHTML = '<p>Tidak ada data siswa yang memiliki NISN dan Tanggal Lahir lengkap untuk dicetak.</p>';
+      page.style.display = 'block';
+      return;
+    }
+
+    // 1. Buat HTML untuk semua kartu
+    let cardsHtml = '';
+    for (let i = 0; i < cardData.length; i++) {
+      const siswa = cardData[i];
+      cardsHtml += `
+        <div class="login-card">
+          <h3>Kartu Cek Kelulusan Siswa</h3>
+          <a class="login-card-qr"
+             id="qr-siswa-${i}" 
+             href="${websiteUrl}" 
+             target="_blank" 
+             title="Pindai kode ini, atau klik untuk membuka link">
+          </a>
+          <p style="font-size: 12px; color: #333; margin: 5px 0 0 0; font-family: sans-serif; font-weight: 500;">
+            Link: s.id/aplikasi-ijazah
+          </p>
+          <div class="login-card-info">
+            <strong>${siswa.nama}</strong><br>
+            NISN: <strong>${siswa.nisn}</strong><br>
+            Tgl. Lahir: <strong>${siswa.tglLahir}</strong>
+          </div>
+        </div>
+      `;
+    }
+    container.innerHTML = cardsHtml;
+    
+    // 2. Tampilkan halaman cetak
+    page.style.display = 'block';
+
+    // 3. Generate QR Code
+    setTimeout(() => {
+      try {
+        for (let i = 0; i < cardData.length; i++) {
+          const qrElement = document.getElementById(`qr-siswa-${i}`); 
+          if (qrElement) {
+            qrElement.innerHTML = ''; 
+            new QRCode(qrElement, {
+              text: websiteUrl,
+              width: 160,
+              height: 160,
+              colorDark : "#000000",
+              colorLight : "#ffffff",
+              correctLevel : QRCode.CorrectLevel.H
+            });
+          }
+        }
+      } catch (e) {
+        console.error("Gagal membuat QR Code siswa:", e);
+        if (typeof QRCode === 'undefined') {
+          showToast("Gagal memuat library QR Code. Periksa koneksi.", 'gagal');
+        } else {
+          showToast("Gagal membuat QR Code, terjadi error.", 'gagal');
+        }
+      }
+    }, 50); 
+    
+    showToast(`Berhasil membuat ${cardData.length} kartu siswa.`, 'sukses');
   }
 
 </script>
