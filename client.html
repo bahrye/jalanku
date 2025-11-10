@@ -292,49 +292,58 @@
       let toast = null;
       let isRecycled = false;
 
-      // 1. CEK APAKAH BISA RECYCLE (Gunakan notifikasi proses yang sedang aktif)
-      // Ini kunci agar tidak ada blink: kita pakai elemen yang SAMA.
+      // --- PERUBAHAN LOGIKA DAUR ULANG DI SINI ---
+      // 1. CEK APAKAH BISA RECYCLE
       if (currentProsesToast && document.body.contains(currentProsesToast)) {
-          toast = currentProsesToast;
-          isRecycled = true;
           
-          // Reset status agar tidak hilang tiba-tiba
-          toast.classList.remove('hide');
-          toast.isDismissing = false;
-          if (toast.dismissTimer) clearTimeout(toast.dismissTimer);
+          if (type === 'proses') {
+            // Jika kita memanggil 'proses' dan 'proses' sudah ada -> RECYCLE
+            toast = currentProsesToast;
+            isRecycled = true;
+          } else {
+            // Jika kita memanggil 'sukses'/'gagal' TAPI 'proses' aktif:
+            // JANGAN RECYCLE. BUAT TOAST BARU (Sesuai permintaan Anda)
+            toast = document.createElement('div');
+            attachSwipeListeners(toast);
+            container.prepend(toast);
+            isRecycled = false;
+          }
+          
       } else {
-          // Jika tidak ada yang bisa di-recycle, buat baru
+          // Jika tidak ada currentProsesToast yang aktif, buat baru (logika asli)
           toast = document.createElement('div');
-          // Pasang listener swipe hanya sekali saat pembuatan elemen
           attachSwipeListeners(toast);
           container.prepend(toast);
       }
+      // --- AKHIR PERUBAHAN ---
 
       // 2. UPDATE TAMPILAN INSTAN (MORPHING)
-      // Reset semua kelas tipe dulu agar tidak bentrok (misal dari toast-gagal jadi toast-proses)
+      if (isRecycled) {
+        // Reset status agar tidak hilang tiba-tiba
+        toast.classList.remove('hide');
+        toast.isDismissing = false;
+        if (toast.dismissTimer) clearTimeout(toast.dismissTimer);
+      }
+      
       toast.classList.remove('toast-proses', 'toast-sukses', 'toast-gagal');
-      // Tambahkan kelas dasar dan tipe baru
       toast.classList.add('global-toast', `toast-${type}`);
       
-      // Pastikan notifikasi terlihat
       if (!toast.classList.contains('show')) {
-          void toast.offsetWidth; // Force reflow agar animasi 'show' berjalan mulus untuk elemen baru
+          void toast.offsetWidth; 
           toast.classList.add('show');
       }
 
-      // Siapkan konten baru
       let iconHtml = '';
       if (type === 'proses') {
         iconHtml = '<div class="spinner-toast"></div>';
-        duration = 0; // Proses tidak punya timer auto-close
+        duration = 0; 
       } else if (type === 'sukses') {
         iconHtml = '<i class="fas fa-check-circle"></i>';
       } else if (type === 'gagal') {
         iconHtml = '<i class="fas fa-exclamation-circle"></i>';
-        duration = 5000; // Tampilkan error sedikit lebih lama
+        duration = 5000; 
       }
 
-      // Timpa isi HTML notifikasi dengan yang baru
       toast.innerHTML = `
         <div class="toast-icon">${iconHtml}</div>
         <div class="toast-message">${message}</div>
@@ -343,27 +352,24 @@
 
       // 3. UPDATE POINTER GLOBAL
       if (type === 'proses') {
-          currentProsesToast = toast;
-      } else if (isRecycled && toast === currentProsesToast) {
-          // --- PERBAIKAN KRUSIAL DI SINI ---
-          // JANGAN lepaskan referensi. Biarkan currentProsesToast
-          // tetap menunjuk ke toast ini (yang sekarang sudah 'sukses' atau 'gagal')
-          // agar `hideToast()` dapat menemukannya.
-          // currentProsesToast = null; // <-- BARIS INI DIHAPUS/DIKOMENTARI
-          // --- AKHIR PERBAIKAN ---
+          currentProsesToast = toast; // Selalu set/reset pointer 'proses'
       }
+      // (Kita tidak lagi membutuhkan logika 'else if (isRecycled ...)' di sini)
 
-      // 4. FUNGSI TUTUP LOKAL (Diperbarui setiap kali showToast dipanggil)
+      // 4. FUNGSI TUTUP LOKAL
       const dismiss = () => {
           if (toast.isDismissing) return;
           toast.isDismissing = true;
           
-          if (toast === currentProsesToast) currentProsesToast = null;
+          // --- PERUBAHAN: Hanya hapus pointer jika toast ini ADALAH toast proses ---
+          if (toast === currentProsesToast) {
+            currentProsesToast = null;
+          }
+          // --- AKHIR PERUBAHAN ---
 
           toast.classList.remove('show');
           toast.classList.add('hide');
           
-          // Hapus elemen hanya setelah animasi CSS selesai
           toast.addEventListener('animationend', (e) => {
               if (e.target === toast && toast.parentNode) {
                   toast.parentNode.removeChild(toast);
@@ -371,16 +377,13 @@
           }, { once: true });
       };
 
-      // Simpan fungsi dismiss di elemen agar bisa diakses oleh swipe listener
       toast.dismissFunc = dismiss;
 
-      // Pasang listener untuk tombol close yang baru dibuat
       const closeBtn = toast.querySelector('.toast-close');
       if (closeBtn) {
-          // Gunakan satu handler untuk click dan touchstart agar responsif
           const handleClose = (e) => {
               e.stopPropagation();
-              e.preventDefault(); // Mencegah double-fire pada beberapa device
+              e.preventDefault(); 
               if (toast.dismissTimer) clearTimeout(toast.dismissTimer);
               dismiss();
           };
@@ -2887,30 +2890,60 @@
     showConfirmationModal(title, message, callback, 'danger');
   }
 
+  // Salin dan GANTI fungsi onTableRefreshed() Anda dengan yang ini
   function onTableRefreshed(response) {
       setLoading(false);
 
       if (response.status === "sukses") {
-        setIjazahDirty(true);// <-- TAMBAHKAN INI
-        if (response.message) {
-          showInfoModal("Sukses", response.message, false, bukaHalamanMapel);
-        } else {
-          bukaHalamanMapel();
-        }
+        setIjazahDirty(true);
+
+        // --- PERBAIKAN BARU DI SINI ---
+        // Hapus cache mapel di sisi klien sebelum memuat ulang halaman.
+        globalMapelList = [];
+        // --- AKHIR PERBAIKAN ---
+
+        // (Kita tidak perlu jeda 550ms di sini karena showInfoModal
+        //  sudah menangani alurnya sendiri dengan benar)
+        showInfoModal("Sukses", response.message, false, bukaHalamanMapel);
+
       } else {
         showInfoModal("Error", response.message, true, null);
       }
   }
 
+  // Salin dan GANTI fungsi onMapelSaved() Anda dengan yang ini
   function onMapelSaved(response) {
+      // 1. Matikan toast spinner "Menyimpan..."
       setLoading(false);
 
       if (response.status === "sukses") {
-        setIjazahDirty(true);// <-- TAMBAHKAN INI
-        tutupModalMapel();
+        setIjazahDirty(true);
+        tutupModalMapel(); // 2. Tutup modalnya
         setMapelOrderDirty(false); 
-        bukaHalamanMapel();
+
+        // --- PERBAIKAN BARU DI SINI ---
+        // 3. Hapus cache mapel di sisi klien.
+        //    Ini akan memaksa 'bukaHalamanMapel()' untuk mengambil
+        //    data baru dari server.
+        globalMapelList = [];
+        // --- AKHIR PERBAIKAN ---
+
+        // 4. Terapkan pola jeda 550ms (ini sudah benar)
+        setTimeout(() => {
+          
+          // 5. Tampilkan toast "Sukses"
+          showToast("Data mapel berhasil disimpan!", 'sukses');
+          
+          // 6. Panggil 'bukaHalamanMapel'.
+          //    Karena 'globalMapelList' kosong, ini akan memicu
+          //    panggilan ke 'google.script.run.getMapel(getToken())'
+          //    dan menampilkan data baru.
+          bukaHalamanMapel();
+          
+        }, 550); // Jeda 550ms
+
       } else {
+        // Jika GAGAL, tampilkan error di dalam modal (logika asli)
         showMessage('modal-mapel-error', response.message, true);
       }
   }
@@ -3620,14 +3653,38 @@ function populateSiswaFilters() {
     }
   }
 
+  // Salin dan GANTI fungsi onSiswaSaved() Anda dengan yang ini
   function onSiswaSaved(response) {
+      // 1. Matikan toast spinner "Menyimpan..."
       setLoading(false);
 
       if (response.status === "sukses") {
-        setIjazahDirty(true);// <-- TAMBAHKAN INI
-        tutupModalSiswa();
-        bukaHalamanSiswa();
+        setIjazahDirty(true);
+        tutupModalSiswa(); // 2. Tutup modalnya
+
+        // --- PERBAIKAN BARU DI SINI ---
+        // 3. Hapus cache siswa di sisi klien.
+        //    Ini akan memaksa 'bukaHalamanSiswa()' untuk mengambil
+        //    data baru dari server.
+        globalSiswaList = []; 
+        // --- AKHIR PERBAIKAN ---
+
+        // 4. Terapkan pola jeda 550ms (ini sudah benar)
+        setTimeout(() => {
+          
+          // 5. Tampilkan toast "Sukses"
+          showToast("Data siswa berhasil disimpan!", 'sukses');
+          
+          // 6. Panggil 'bukaHalamanSiswa'.
+          //    Karena 'globalSiswaList' kosong, ini akan memicu
+          //    panggilan ke 'google.script.run.getSiswa(getToken())'
+          //    dan menampilkan data baru.
+          bukaHalamanSiswa();
+          
+        }, 550); // Jeda 550ms
+
       } else {
+        // Jika GAGAL, tampilkan error di dalam modal (logika asli)
         showMessage('modal-siswa-error', response.message, true);
       }
   }
@@ -5479,8 +5536,8 @@ function populateSiswaFilters() {
     }
   }
 
-  // Salin dan GANTI fungsi bukaHalamanNilaiIjazah() Anda dengan yang ini
-  function bukaHalamanNilaiIjazah(isRecalculating = false) { // <-- TAMBAH PARAMETER
+  // Salin dan ganti fungsi bukaHalamanNilaiIjazah() Anda dengan yang ini
+  function bukaHalamanNilaiIjazah(isRecalculating = false) { 
       tampilHalaman('halaman-nilai-ijazah');
       hideMessage('nilai-ijazah-message');
       document.getElementById('ijazah-ujian-table-container').innerHTML = '<p>Memuat data...</p>';
@@ -5493,24 +5550,42 @@ function populateSiswaFilters() {
       document.querySelector('#ijazah-tab-bar .tab-link[data-tab="rapor"]').innerText = 'Nilai Rapor (...)';
       document.querySelector('#ijazah-tab-bar .tab-link[data-tab="ijazah"]').innerText = 'Nilai Ijazah (...)';
       
-      // --- PERBAIKAN ---
-      // Hanya panggil setLoading jika INI BUKAN bagian dari recalculate flow.
-      // Ini mencegah toast "Memuat nilai..." muncul dan menimpa toast "Sukses".
       if (!isRecalculating) {
         setLoading(true, 'Memuat nilai ijazah...', false, false);
       }
-      // --- AKHIR PERBAIKAN ---
       
-      google.script.run.withSuccessHandler(onNilaiIjazahLoaded).withFailureHandler(onGagal).getNilaiIjazahData(getToken());
+      // --- PERUBAHAN DI SINI ---
+      // Kita ubah pemanggil 'withSuccessHandler' agar bisa meneruskan flag 'isRecalculating'
+      // ke dalam fungsi 'onNilaiIjazahLoaded'.
+      google.script.run
+        .withSuccessHandler((response) => {
+            // Panggil onNilaiIjazahLoaded secara manual DAN teruskan flag-nya
+            onNilaiIjazahLoaded(response, isRecalculating); 
+        })
+        .withFailureHandler(onGagal)
+        .getNilaiIjazahData(getToken());
+      // --- AKHIR PERUBAHAN ---
   }
 
   // Salin dan GANTI fungsi onNilaiIjazahLoaded() Anda dengan yang ini
-  function onNilaiIjazahLoaded(response) {
-      // --- PERBAIKAN ---
-      // Panggil setLoading(false) di paling atas.
-      // Ini akan membersihkan toast "Proses..." atau "Memuat..."
-      setLoading(false);
-      // --- AKHIR PERBAIKAN ---
+  function onNilaiIjazahLoaded(response, isRecalculating = false) { 
+      
+      // --- PERUBAHAN SOLUSI INTI DI SINI ---
+      
+      // 1. Panggil setLoading(false) untuk menyembunyikan toast "Proses..."
+      setLoading(false); 
+      
+      // 2. Cek apakah ini alur hitung ulang DAN sukses
+      if (isRecalculating && response.status === 'sukses') {
+          
+          // 3. Tampilkan toast "Sukses" SETELAH animasi "hide" selesai.
+          //    Kita beri jeda 550ms untuk memastikan toast "Proses..."
+          //    sudah 100% hilang dari DOM sebelum kita memunculkan yang baru.
+          setTimeout(() => {
+            showToast("Nilai berhasil dihitung ulang dan data telah diperbarui.", 'sukses');
+          }, 550); // 550ms adalah jeda aman (animasi hide + 50ms buffer)
+      }
+      // --- AKHIR PERUBAHAN ---
       
       const btnToggleUjian = document.getElementById('btn-toggle-ujian-view');
       const btnToggleRapor = document.getElementById('btn-toggle-rapor-view');
@@ -5542,7 +5617,7 @@ function populateSiswaFilters() {
         if (exportControlsRapor) exportControlsRapor.style.display = 'none';
         if (exportControlsIjazah) exportControlsIjazah.style.display = 'none';
 
-        if (response.message.includes("belum pernah dikalkulasi")) {
+        if (!isRecalculating && response.message.includes("belum pernah dikalkulasi")) {
           showToast(response.message, 'gagal');
         }
         return;
@@ -5987,35 +6062,88 @@ function populateSiswaFilters() {
     }
   }
 
+  // Salin dan GANTI fungsi handleExportClick() Anda dengan yang ini
   function handleExportClick(button, tipeFile, tipeData) {
     if (button.disabled) return;
-    setExportButtonsLoading(true, button);
+    
+    // 1. Tentukan pesan loading dinamis
+    let loadingMessage = 'Membuat file ekspor, harap tunggu...'; // Default
+    if (tipeFile === 'pdf') {
+      loadingMessage = 'Membuat file ekspor PDF, harap tunggu...';
+    } else if (tipeFile === 'excel') {
+      loadingMessage = 'Membuat file ekspor Excel, harap tunggu...';
+    }
+
+    // 2. Tampilkan toast spinner "Proses..." dengan pesan dinamis
+    setLoading(true, loadingMessage, false, true); 
+    
+    // 3. Tampilkan spinner di tombol yang diklik (logika Anda yang sudah ada)
+    setExportButtonsLoading(true, button); 
+    
+    // 4. Persiapkan data dan panggil server
     const kelasFilter = document.getElementById('ijazah-filter-kelas').value;
     let isWeighted = true;
     if (tipeData === 'ujian') isWeighted = showWeightedUjian;
     else if (tipeData === 'rapor') isWeighted = showWeightedRapor;
-    google.script.run.withSuccessHandler(onDataExported).withFailureHandler(onGagalExport).exportDataIjazah(getToken(), tipeFile, tipeData, kelasFilter, isWeighted);
+    
+    // --- PERUBAHAN DI SINI ---
+    google.script.run
+      .withSuccessHandler((response) => {
+          // Teruskan 'response' DAN 'tipeFile' ke callback
+          onDataExported(response, tipeFile); 
+      }) 
+      .withFailureHandler(onGagalExport) 
+      .exportDataIjazah(getToken(), tipeFile, tipeData, kelasFilter, isWeighted);
+    // --- AKHIR PERUBAHAN ---
   }
 
-  function onDataExported(response) {
-    setExportButtonsLoading(false, null);
+  // Salin dan GANTI fungsi onDataExported() Anda dengan yang ini
+  function onDataExported(response, tipeFile) { // <-- 1. TAMBAHKAN PARAMETER 'tipeFile'
+    // 1. Sembunyikan toast "Proses..."
+    setLoading(false);
+    
+    // 2. Kembalikan tombol ke status normal
+    setExportButtonsLoading(false, null); 
 
     if (response.status === 'sukses') {
-      showToast('File ekspor berhasil dibuat. Mengunduh...', 'sukses');
-      try {
-        const dataUrl = `data:${response.mimeType};base64,${response.base64}`;
-        const link = document.createElement('a');
-        link.setAttribute('href', dataUrl);
-        link.setAttribute('download', response.fileName);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } catch (e) {
-        showToast('Gagal memproses unduhan: ' + e.message, 'gagal');
+      
+      // --- PERUBAHAN DI SINI ---
+      // 3. Tentukan pesan sukses dinamis
+      let successMessage = 'File ekspor berhasil dibuat. Mengunduh...'; // Default
+      if (tipeFile === 'pdf') {
+        successMessage = 'File PDF berhasil dibuat. Mengunduh...';
+      } else if (tipeFile === 'excel') {
+        successMessage = 'File Excel berhasil dibuat. Mengunduh...';
       }
+      // --- AKHIR PERUBAHAN ---
+
+      // 4. Tampilkan toast "Sukses" SETELAH jeda 550md
+      setTimeout(() => {
+        showToast(successMessage, 'sukses'); // <-- Gunakan pesan dinamis
+        try {
+          const dataUrl = `data:${response.mimeType};base64,${response.base64}`;
+          
+          const link = document.createElement('a');
+          link.setAttribute('href', dataUrl);
+          link.setAttribute('download', response.fileName);
+          link.style.visibility = 'hidden';
+          document.body.appendChild(link);
+          
+          link.click();
+          
+          document.body.removeChild(link);
+
+        } catch (e) {
+          // Tampilkan toast error baru jika unduhan gagal
+          showToast('Gagal memproses unduhan: ' + e.message, 'gagal');
+        }
+      }, 550); // 550ms jeda
+
     } else {
-      showToast('Gagal membuat file ekspor: ' + response.message, 'gagal');
+      // 4B. Jika GAGAL, tampilkan toast "Gagal" SETELAH jeda
+      setTimeout(() => {
+        showToast('Gagal membuat file ekspor: ' + response.message, 'gagal');
+      }, 550); // 550ms jeda
     }
   }
 
@@ -6075,42 +6203,33 @@ function populateSiswaFilters() {
       const btn = document.getElementById('btn-recalculate-ijazah');
       setButtonLoading(btn, 'Menghitung...');
       
-      // 1. Tampilkan toast "Proses..." SEKARANG
-      // (showLoadingToast = true)
+      // 1. Tampilkan toast "Proses..." (sesuai permintaan Anda)
       setLoading(true, "Proses sedang menghitung ulang, silahkan tunggu...", false, true);
       
-      // --- PERBAIKAN UTAMA ---
-      // Gunakan setTimeout untuk memberi browser jeda agar sempat
-      // me-render toast SEBELUM kita memanggil server.
+      // 2. Panggil server
       setTimeout(() => {
-        // 2. Panggil server SETELAH toast terlihat
         google.script.run
           .withSuccessHandler(onRekalkulasiIjazahSukses)
           .withFailureHandler(onGagalRekalkulasiIjazah)
           .recalculateIjazahData(getToken());
-      }, 50); // 50ms jeda, sudah cukup
-      // --- AKHIR PERBAIKAN ---
+      }, 50); 
   }
 
   // Salin dan GANTI fungsi onRekalkulasiIjazahSukses() Anda dengan yang ini
   function onRekalkulasiIjazahSukses(response) {
       const btn = document.getElementById('btn-recalculate-ijazah');
-      resetButtonLoading(btn);
+      resetButtonLoading(btn); // Kembalikan tombol (sesuai permintaan Anda)
 
       if (response.status === 'sukses') {
-        // Server merespons { isDirty: false }
         setIjazahDirty(response.isDirty); 
         
-        // Tampilkan toast "Sukses" (ini akan menggantikan toast "Proses...")
-        showToast(response.message, 'sukses');
-        
-        // --- PERBAIKAN ---
-        // Panggil bukaHalamanNilaiIjazah dengan flag 'isRecalculating'
-        bukaHalamanNilaiIjazah(true); // Kirim true
-        // --- AKHIR PERBAIKAN ---
+        // BIARKAN toast "Proses..." tetap berjalan.
+        // Langsung panggil fungsi untuk memuat data baru.
+        bukaHalamanNilaiIjazah(true); 
 
       } else {
-        // Server akan mengirim { isDirty: true } jika gagal
+        // Jika GAGAL, baru matikan loading dan tampilkan error
+        setLoading(false); 
         if (response.isDirty) {
           setIjazahDirty(response.isDirty); 
         }
