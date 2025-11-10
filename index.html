@@ -223,6 +223,12 @@
             <span>Kelola Kelulusan</span>
             <div class="premium-stamp" style="display: none;">Premium</div>
           </button>
+
+          <button class="dashboard-card card-disabled" id="btn-buka-proses-kelulusan">
+            <i class="fas fa-history"></i>
+            <span>Proses Kelulusan</span>
+            <div class="premium-stamp" style="display: none;">Premium</div>
+          </button>
         </div>
       </div>
     </div>
@@ -607,6 +613,9 @@
         <div class="page-header">
           <h2>Kelola Data Siswa</h2>
           <div class="header-buttons">
+            <button id="btn-cetak-kartu-siswa" style="background-color: var(--primary-color);">
+              <i class="fas fa-id-card"></i>Cetak Kartu Siswa
+            </button>
             <button id="btn-tambah-siswa-baru"><i class="fas fa-plus"></i>Tambah Siswa</button>
             <button id="btn-import-siswa"><i class="fas fa-upload"></i>Import Siswa</button>
             <button id="btn-hapus-semua-siswa"><i class="fas fa-trash-alt"></i>Hapus Semua Siswa</button>
@@ -1508,6 +1517,54 @@
       </div>
       <div id="kartu-container">
         </div>
+    </div>
+
+    <div class="container" id="halaman-proses-kelulusan" style="display: none;">
+      <div class="page">
+        <div class="page-top-nav">
+          <button type="button" id="btn-kembali-ke-dashboard-13"><i class="fas fa-arrow-circle-left"></i>Kembali ke Dasbor</button>
+        </div>
+
+        <div class="page-header">
+          <h2>Proses Kelulusan (Tutup Tahun Ajaran)</h2>
+        </div>
+
+        <div class="message error" style="display: block; text-align: left; font-size: 16px; line-height: 1.6;">
+          <h4 style="margin-top: 0; font-size: 18px;"><i class="fas fa-exclamation-triangle"></i> PERINGATAN BESAR!</h4>
+          <p style="margin: 0;">Tindakan ini akan <strong>MENGHAPUS PERMANEN</strong> seluruh data berikut:</p>
+          <ul style="margin: 10px 0 0 20px; padding: 0;">
+            <li>Semua data di <strong>Kelola Data Siswa</strong>.</li>
+            <li>Semua <strong>Nilai Ujian</strong> (UM/US dan Praktek).</li>
+            <li>Semua <strong>Nilai Rapor</strong> (Semester 1 s/d 5).</li>
+            <li>Semua data <strong>Nilai Ijazah</strong> dan data <strong>Validasi</strong>.</li>
+          </ul>
+          <p style="margin-top: 15px;">Data <strong>Mata Pelajaran</strong> dan <strong>Kelas</strong> akan <strong>TETAP DISIMPAN</strong> untuk tahun ajaran berikutnya.</p>
+          <p style="margin-top: 15px;">Tindakan ini <strong>TIDAK BISA DIBATALKAN</strong>.</p>
+        </div>
+
+        <form id="form-proses-kelulusan" onsubmit="return false;">
+          <h3 class="form-section-header">Langkah 1: Download Backup Data</h3>
+          <p>Sebelum melanjutkan, sistem akan mengunduh salinan (backup) lengkap database Anda saat ini dalam format Excel. Pastikan Anda menyimpannya.</p>
+
+          <h3 class="form-section-header">Langkah 2: Konfirmasi Penghapusan</h3>
+          <p>Untuk melanjutkan proses dan menghapus data, ketik nama sekolah Anda di bawah ini. Nama sekolah harus sama persis.</p>
+          
+          <div class="form-group">
+            <label for="input-konfirmasi-nama-sekolah">Ketik Nama Sekolah: <strong id="nama-sekolah-untuk-konfirmasi" style="color: var(--danger-color);">Memuat...</strong></label>
+            <input type="text" id="input-konfirmasi-nama-sekolah" placeholder="Ketik nama sekolah Anda di sini" autocomplete="off">
+            <input type="hidden" id="nama-sekolah-hidden-konfirmasi" value="">
+          </div>
+          
+          <p id="proses-kelulusan-message" class="message" style="display: none;"></p>
+
+          <hr>
+          <div class="form-actions">
+              <button type="button" id="btn-proses-kelulusan" disabled style="background-color: var(--danger-color);">
+                <i class="fas fa-trash-alt"></i>Download Backup & Hapus Data
+              </button>
+          </div>
+        </form>
+      </div>
     </div>
 
     <div class="container" id="halaman-donasi" style="display: none;">
