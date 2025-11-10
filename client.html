@@ -3485,6 +3485,7 @@
           console.log("Memuat siswa dari server...");
           setLoading(true, 'Memuat data siswa...', false, false);
           document.getElementById('siswa-table-container').innerHTML = "<p>Memuat data siswa...</p>";
+          document.getElementById('btn-cetak-kartu-siswa').disabled = true;
           document.getElementById('btn-tambah-siswa-baru').disabled = true;
           document.getElementById('btn-import-siswa').disabled = true;
           document.getElementById('btn-hapus-semua-siswa').disabled = true;
