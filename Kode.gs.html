@@ -1390,9 +1390,29 @@ function createMapel(token, mapelID, namaMapel) {
       const urutanNum = Number(data[i][4] || 0);
       if (urutanNum > maxUrutan) maxUrutan = urutanNum;
     }
-    sheetMapel.appendRow([mapelID, namaMapel, false, false, maxUrutan + 1]);
+    const newUrutan = maxUrutan + 1;
+    const defaultIsUS = false;
+    const defaultIsUP = false;
+
+    sheetMapel.appendRow([mapelID, namaMapel, defaultIsUS, defaultIsUP, newUrutan]);
     clearMapelCache(sessionData.sekolahID, spreadsheetID);
-    return { status: "sukses" };
+
+    // --- PERUBAHAN DI SINI ---
+    // Buat objek data baru untuk dikirim kembali ke klien
+    const newMapelObject = {
+      id: mapelID,
+      nama: namaMapel,
+      isUS: defaultIsUS,
+      isUP: defaultIsUP,
+      urutan: newUrutan,
+      originalUrutan: newUrutan,
+      originalIsUS: defaultIsUS,
+      originalIsUP: defaultIsUP
+    };
+    
+    return { status: "sukses", newData: newMapelObject };
+    // --- AKHIR PERUBAHAN ---
+
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
@@ -1405,11 +1425,28 @@ function updateMapel(token, mapelID, namaMapel) {
     const ss = SpreadsheetApp.openById(spreadsheetID);
     const sheetMapel = getMapelSheet(ss);
     const data = sheetMapel.getDataRange().getValues();
+    
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] === mapelID) {
-        sheetMapel.getRange(i + 1, 2).setValue(namaMapel);
+        
+        sheetMapel.getRange(i + 1, 2).setValue(namaMapel); // Update nama
         clearMapelCache(sessionData.sekolahID, spreadsheetID);
-        return { status: "sukses" };
+
+        // --- PERUBAHAN DI SINI ---
+        // Kirim kembali data lengkap dari baris yang diperbarui
+        const updatedMapelObject = {
+          id: data[i][0],
+          nama: namaMapel, // Nama baru dari input
+          isUS: data[i][2] || false,
+          isUP: data[i][3] || false,
+          urutan: Number(data[i][4] || i),
+          originalUrutan: Number(data[i][4] || i),
+          originalIsUS: data[i][2] || false,
+          originalIsUP: data[i][3] || false
+        };
+
+        return { status: "sukses", newData: updatedMapelObject };
+        // --- AKHIR PERUBAHAN ---
       }
     }
     return { status: "gagal", message: "MapelID tidak ditemukan." };
@@ -1686,11 +1723,26 @@ function createSiswa(token, dataSiswa) {
       dataSiswa.kelas, newUrutan
     ]);
 
-    // --- PERBAIKAN DI SINI ---
     clearSiswaCache(sessionData.sekolahID, spreadsheetID);
-    // --- AKHIR PERBAIKAN ---
 
-    return { status: "sukses" };
+    // --- PERUBAHAN DI SINI ---
+    // Buat objek siswa baru untuk dikirim kembali ke klien
+    const newSiswaObject = {
+      id: newSiswaID,
+      nama: dataSiswa.nama,
+      nisn: dataSiswa.nisn, // Kirim nilai mentah
+      nisLokal: dataSiswa.nisLokal || '',
+      jk: dataSiswa.jk || '',
+      tempatLahir: dataSiswa.tempatLahir || '',
+      tglLahir: dataSiswa.tglLahir || '',
+      kelas: dataSiswa.kelas || '',
+      urutan: newUrutan,
+      originalUrutan: newUrutan // Penting untuk logika 'dirty check'
+    };
+
+    return { status: "sukses", newData: newSiswaObject };
+    // --- AKHIR PERUBAHAN ---
+
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
@@ -1719,11 +1771,22 @@ function updateSiswa(token, dataSiswa) {
     ];
     sheet.getRange(rowToUpdate, 1, 1, updatedRow.length).setValues([updatedRow]);
     
-    // --- PERBAIKAN DI SINI ---
     clearSiswaCache(sessionData.sekolahID, spreadsheetID);
-    // --- AKHIR PERBAIKAN ---
 
-    return { status: "sukses" };
+    // --- PERUBAHAN DI SINI ---
+    // Ambil 'urutan' asli dari data yang dibaca (data adalah array 0-indexed, rowToUpdate 1-indexed)
+    const urutanAsli = data[rowToUpdate - 1][8]; // Kolom I adalah index 8
+    
+    // Gabungkan dataSiswa dari klien dengan urutan dari server
+    const updatedSiswaObject = { 
+      ...dataSiswa, // Data dari form (id, nama, nisn, dll)
+      urutan: urutanAsli, 
+      originalUrutan: urutanAsli 
+    };
+
+    return { status: "sukses", newData: updatedSiswaObject };
+    // --- AKHIR PERUBAHAN ---
+
   } catch (e) {
     return { status: "gagal", message: e.message };
   }
@@ -2858,24 +2921,28 @@ function getNilaiRaporGridData(token, semesterId) {
     const { sessionData, spreadsheetID } = validateAdminSession(token);
     const sekolahID = sessionData.sekolahID;
     
-    // --- PERBAIKAN ---
     const scriptCache = CacheService.getScriptCache();
-    // --- AKHIR PERBAIKAN ---
-
     const cacheKey = NILAI_RAPOR_GRID_CACHE_KEY_PREFIX + semesterId + "_" + sekolahID;
-    
-    // --- PERBAIKAN ---
     const cachedData = scriptCache.get(cacheKey);
-    // --- AKHIR PERBAIKAN ---
 
     if (cachedData != null) {
       return JSON.parse(cachedData);
     }
     const ss = SpreadsheetApp.openById(spreadsheetID);
-    const siswaData = getSiswa(token);
-    if (siswaData.status !== 'sukses') throw new Error(siswaData.message);
-    const siswaList = siswaData.siswa.map(s => ({ id: s.id, nama: s.nama, nisn: s.nisn, kelas: s.kelas }));
-    const mapelListFull = getMapelDataInternal(ss, sekolahID);
+    
+    // --- PERBAIKAN DI SINI ---
+    // Menggunakan helper cache _getSiswaInternal (ini sudah benar dari langkah sebelumnya)
+    const siswaList = _getSiswaInternal(spreadsheetID, sekolahID).map(s => ({ 
+      id: s.id, 
+      nama: s.nama, 
+      nisn: s.nisn, 
+      kelas: s.kelas 
+    }));
+    
+    // Menggunakan helper cache _getMapelInternal
+    const mapelListFull = _getMapelInternal(ss, sekolahID); 
+    // --- AKHIR PERBAIKAN ---
+
     const filteredMapelList = mapelListFull.filter(m => m.isUS === true || m.isUP === true);
     const mapelList = filteredMapelList.map(m => ({ id: m.id, nama: m.nama }));
     const sheetNilai = getNilaiRaporSheet(ss);
@@ -2923,9 +2990,7 @@ function getNilaiRaporGridData(token, semesterId) {
       dataRekap: { siswaList, mapelList, nilaiRekapData: nilaiDataRekap }
     };
     
-    // --- PERBAIKAN ---
     scriptCache.put(cacheKey, JSON.stringify(response), 600);
-    // --- AKHIR PERBAIKAN ---
     
     return response;
   } catch (e) {
@@ -3917,19 +3982,13 @@ function clearAllCaches(token) {
   }
 }
 
-// Salin dan GANTI fungsi getValidationData() Anda dengan yang ini
 function getValidationData(token) {
   try {
     const { sessionData, spreadsheetID } = validateAdminSession(token);
     const ss = SpreadsheetApp.openById(spreadsheetID);
     
-    // --- PERBAIKAN: GANTI BACA SHEET DENGAN HELPER CACHE ---
-    // HAPUS: const siswaSheet = getSiswaSheet(ss); ... siswaDataValues.shift(); ...
-    // GANTI DENGAN:
+    // --- PERBAIKAN DI SINI ---
     const siswaList = _getSiswaInternal(spreadsheetID, sessionData.sekolahID);
-    
-    // HAPUS: const mapelListFull = getMapelDataInternal(ss, session.sessionData.sekolahID);
-    // GANTI DENGAN:
     const mapelListFull = _getMapelInternal(ss, sessionData.sekolahID);
     // --- AKHIR PERBAIKAN ---
 
@@ -4440,12 +4499,10 @@ function prosesLoginGuru(npsn, email, password) {
       return { status: "gagal", message: "NPSN/Kode Sekolah tidak ditemukan." };
     }
 
-    // --- TAMBAHKAN BLOK GATING INI ---
     const donasiStatus = targetSekolah[8] || "NONE"; // Kolom I
     if (donasiStatus !== "APPROVED") {
       return { status: "gagal", message: "Fitur Login Guru adalah fitur premium. Silakan minta Admin Sekolah Anda untuk mengaktifkan donasi." };
     }
-    // --- AKHIR BLOK ---
 
     const spreadsheetID = targetSekolah[5];
     const jenjangPilihan = getJenjangPilihanFromSheet(spreadsheetID);
@@ -4465,49 +4522,42 @@ function prosesLoginGuru(npsn, email, password) {
       
       if (verifyPassword(password, guruData[2], guruData[3])) {
         
-        // --- ============================================= ---
-        // --- ===== LOGIKA BARU UNTUK MEMBACA MAPEL ===== ---
-        // --- ============================================= ---
         const dataMapel = guruData[4]; // Kolom E (MapelKelasJSON)
         let mapelKelasData = {};
         let assignedMapel = [];
-        let assignedKelas = new Set(); // Gunakan Set untuk data unik
+        let assignedKelas = new Set(); 
 
         if (dataMapel) {
           try {
-            // Coba parse sebagai JSON (Format baru)
             mapelKelasData = JSON.parse(dataMapel);
           } catch (e) {
-            // Gagal parse? Ini pasti format lama (string "MTK,IPA")
             mapelKelasData = {};
             const mapelArray = String(dataMapel).split(',').map(s => s.trim());
             mapelArray.forEach(mapelId => {
               if (mapelId) {
-                mapelKelasData[mapelId] = ["*"]; // "*" berarti "Semua Kelas"
+                mapelKelasData[mapelId] = ["*"]; 
               }
             });
           }
         }
 
-        // Ekstrak mapel unik dan kelas unik dari data
         assignedMapel = Object.keys(mapelKelasData);
         for (const mapel in mapelKelasData) {
           const kelasArray = mapelKelasData[mapel];
           if (kelasArray.includes("*")) {
-            // Jika ada "*", berarti dia mengajar semua kelas
-            // Ambil semua kelas dari Sheet Kelas
             const kelasSheet = getKelasSheet(ss);
             const semuaKelas = kelasSheet.getDataRange().getValues();
-            semuaKelas.shift(); // Hapus header
+            semuaKelas.shift(); 
             semuaKelas.forEach(row => assignedKelas.add(row[0]));
           } else {
-            // Tambahkan kelas spesifik
             kelasArray.forEach(k => assignedKelas.add(k));
           }
         }
-        // --- AKHIR LOGIKA BARU ---
 
-        const allMapel = getMapelDataInternal(ss, targetSekolah[0]);
+        // --- PERBAIKAN DI SINI ---
+        const allMapel = _getMapelInternal(ss, targetSekolah[0]);
+        // --- AKHIR PERBAIKAN ---
+        
         const mapelUPSet = new Set();
         const mapelUMSet = new Set();
         
@@ -4534,11 +4584,9 @@ function prosesLoginGuru(npsn, email, password) {
           spreadsheetID: spreadsheetID,
           jenjangPilihan: jenjangPilihan,
           namaGuru: guruData[1],
-          // --- PERUBAHAN DATA SESI ---
-          assignedMapel: assignedMapel, // Daftar mapel unik [MTK, IPA]
-          assignedKelas: Array.from(assignedKelas), // Daftar kelas unik [9A, 9B]
-          mapelKelasData: mapelKelasData, // Data JSON lengkap
-          // --- AKHIR PERUBAHAN ---
+          assignedMapel: assignedMapel, 
+          assignedKelas: Array.from(assignedKelas), 
+          mapelKelasData: mapelKelasData, 
           hasUjianPraktek: hasPraktek,
           hasUjianMadrasah: hasMadrasah,
           lastActivity: new Date().getTime()
@@ -4716,7 +4764,9 @@ function getGuruTemplateData(token) {
     const { sessionData, spreadsheetID } = validateAdminSession(token);
     const ss = SpreadsheetApp.openById(spreadsheetID);
     
-    const mapelList = getMapelDataInternal(ss, sessionData.sekolahID);
+    // --- PERBAIKAN DI SINI ---
+    const mapelList = _getMapelInternal(ss, sessionData.sekolahID);
+    // --- AKHIR PERBAIKAN ---
     
     const namaSekolah = sessionData.namaSekolah;
     const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd_HHmmss");
@@ -4791,7 +4841,10 @@ function prosesImportExcelGuru(token, fileData) {
       existingEmailSet.add(String(dataGuru[i][0]).trim().toLowerCase());
     }
 
-    const mapelList = getMapelDataInternal(ss, spreadsheetID);
+    // --- PERBAIKAN DI SINI ---
+    const mapelList = _getMapelInternal(ss, spreadsheetID);
+    // --- AKHIR PERBAIKAN ---
+    
     const validMapelIdSet = new Set(mapelList.map(m => m.id));
 
     const { base64, mimeType, fileName } = fileData;
