@@ -771,15 +771,28 @@
             <label for="modal-siswa-nama">Nama Lengkap Siswa (Wajib)</label>
             <input type="text" id="modal-siswa-nama" placeholder="Masukkan nama lengkap">
           </div>
+          
           <div class="form-group">
             <label for="modal-siswa-nisn">NISN Siswa (Wajib)</label>
-            <input type="text" id="modal-siswa-nisn" placeholder="Masukkan NISN">
-          </div>
+            <input type="text" id="modal-siswa-nisn" placeholder="Contoh: 0087976532" inputmode="numeric">
+            
+            <div id="modal-nisn-tooltip">
+              <ul>
+                <li id="nisn-rules"></li>
+              </ul>
+            </div>
+            </div>
           <div class="form-group">
             <label for="modal-siswa-nis-lokal">NIS Lokal (Opsional)</label>
-            <input type="text" id="modal-siswa-nis-lokal" placeholder="Misal: 240001">
-            <small class="helper-text">Format: 2 digit tahun masuk, 4 digit no. urut</small>
-          </div>
+            <input type="text" id="modal-siswa-nis-lokal" placeholder="Misal: 240001" inputmode="numeric">
+            <small class="helper-text">Format: 6 digit angka (contoh: 240001)</small>
+            
+            <div id="modal-nis-lokal-tooltip">
+              <ul>
+                <li id="nis-lokal-rules"></li>
+              </ul>
+            </div>
+            </div>
           <div class="form-group">
             <label for="modal-siswa-jk">Jenis Kelamin (Wajib)</label>
             <select id="modal-siswa-jk">
@@ -874,7 +887,7 @@
         </div>
       </div>
     </div>
-    
+
     <div id="mapel-modal" class="modal">
       <div class="modal-content">
         <div class="modal-header">
@@ -886,8 +899,15 @@
 
           <div class="form-group">
             <label for="modal-mapel-id">Kode Mapel (Unik)</label>
-            <input type="text" id="modal-mapel-id" placeholder="Contoh: MTK, BIN, FIS">
-          </div>
+            <input type="text" id="modal-mapel-id" placeholder="Contoh: QH (2-5 Karakter)" maxlength="5">
+            
+            <div id="modal-mapel-id-tooltip">
+              <ul>
+                <li id="mapel-id-rules"></li>
+              </ul>
+            </div>
+            </div>
+          
           <div class="form-group">
             <label for="modal-mapel-nama">Nama Mata Pelajaran</label>
             <input type="text" id="modal-mapel-nama" placeholder="Contoh: Matematika">
