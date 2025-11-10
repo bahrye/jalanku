@@ -284,111 +284,114 @@
     button.classList.remove('loading');
   }
 
-  // --- FUNGSI NOTIFIKASI "MORPHING" (ANTI-BLINK TOTAL) ---
+  // Salin dan GANTI fungsi showToast() Anda dengan yang ini
   function showToast(message, type = 'proses', duration = 4000) {
-    const container = document.getElementById('global-toast-container');
-    if (!container) return;
+      const container = document.getElementById('global-toast-container');
+      if (!container) return;
 
-    let toast = null;
-    let isRecycled = false;
+      let toast = null;
+      let isRecycled = false;
 
-    // 1. CEK APAKAH BISA RECYCLE (Gunakan notifikasi proses yang sedang aktif)
-    // Ini kunci agar tidak ada blink: kita pakai elemen yang SAMA.
-    if (currentProsesToast && document.body.contains(currentProsesToast)) {
-        toast = currentProsesToast;
-        isRecycled = true;
-        
-        // Reset status agar tidak hilang tiba-tiba
-        toast.classList.remove('hide');
-        toast.isDismissing = false;
-        if (toast.dismissTimer) clearTimeout(toast.dismissTimer);
-    } else {
-        // Jika tidak ada yang bisa di-recycle, buat baru
-        toast = document.createElement('div');
-        // Pasang listener swipe hanya sekali saat pembuatan elemen
-        attachSwipeListeners(toast);
-        container.prepend(toast);
-    }
+      // 1. CEK APAKAH BISA RECYCLE (Gunakan notifikasi proses yang sedang aktif)
+      // Ini kunci agar tidak ada blink: kita pakai elemen yang SAMA.
+      if (currentProsesToast && document.body.contains(currentProsesToast)) {
+          toast = currentProsesToast;
+          isRecycled = true;
+          
+          // Reset status agar tidak hilang tiba-tiba
+          toast.classList.remove('hide');
+          toast.isDismissing = false;
+          if (toast.dismissTimer) clearTimeout(toast.dismissTimer);
+      } else {
+          // Jika tidak ada yang bisa di-recycle, buat baru
+          toast = document.createElement('div');
+          // Pasang listener swipe hanya sekali saat pembuatan elemen
+          attachSwipeListeners(toast);
+          container.prepend(toast);
+      }
 
-    // 2. UPDATE TAMPILAN INSTAN (MORPHING)
-    // Reset semua kelas tipe dulu agar tidak bentrok (misal dari toast-gagal jadi toast-proses)
-    toast.classList.remove('toast-proses', 'toast-sukses', 'toast-gagal');
-    // Tambahkan kelas dasar dan tipe baru
-    toast.classList.add('global-toast', `toast-${type}`);
-    
-    // Pastikan notifikasi terlihat
-    if (!toast.classList.contains('show')) {
-         void toast.offsetWidth; // Force reflow agar animasi 'show' berjalan mulus untuk elemen baru
-         toast.classList.add('show');
-    }
+      // 2. UPDATE TAMPILAN INSTAN (MORPHING)
+      // Reset semua kelas tipe dulu agar tidak bentrok (misal dari toast-gagal jadi toast-proses)
+      toast.classList.remove('toast-proses', 'toast-sukses', 'toast-gagal');
+      // Tambahkan kelas dasar dan tipe baru
+      toast.classList.add('global-toast', `toast-${type}`);
+      
+      // Pastikan notifikasi terlihat
+      if (!toast.classList.contains('show')) {
+          void toast.offsetWidth; // Force reflow agar animasi 'show' berjalan mulus untuk elemen baru
+          toast.classList.add('show');
+      }
 
-    // Siapkan konten baru
-    let iconHtml = '';
-    if (type === 'proses') {
-      iconHtml = '<div class="spinner-toast"></div>';
-      duration = 0; // Proses tidak punya timer auto-close
-    } else if (type === 'sukses') {
-      iconHtml = '<i class="fas fa-check-circle"></i>';
-    } else if (type === 'gagal') {
-      iconHtml = '<i class="fas fa-exclamation-circle"></i>';
-      duration = 5000; // Tampilkan error sedikit lebih lama
-    }
+      // Siapkan konten baru
+      let iconHtml = '';
+      if (type === 'proses') {
+        iconHtml = '<div class="spinner-toast"></div>';
+        duration = 0; // Proses tidak punya timer auto-close
+      } else if (type === 'sukses') {
+        iconHtml = '<i class="fas fa-check-circle"></i>';
+      } else if (type === 'gagal') {
+        iconHtml = '<i class="fas fa-exclamation-circle"></i>';
+        duration = 5000; // Tampilkan error sedikit lebih lama
+      }
 
-    // Timpa isi HTML notifikasi dengan yang baru
-    toast.innerHTML = `
-      <div class="toast-icon">${iconHtml}</div>
-      <div class="toast-message">${message}</div>
-      <div class="toast-close"><i class="fas fa-times"></i></div>
-    `;
+      // Timpa isi HTML notifikasi dengan yang baru
+      toast.innerHTML = `
+        <div class="toast-icon">${iconHtml}</div>
+        <div class="toast-message">${message}</div>
+        <div class="toast-close"><i class="fas fa-times"></i></div>
+      `;
 
-    // 3. UPDATE POINTER GLOBAL
-    if (type === 'proses') {
-        currentProsesToast = toast;
-    } else if (isRecycled && toast === currentProsesToast) {
-        // Jika notifikasi ini tadinya 'proses' tapi sekarang sudah berubah (jadi sukses/gagal),
-        // lepaskan dari variabel global agar tidak diganggu proses lain.
-        currentProsesToast = null;
-    }
+      // 3. UPDATE POINTER GLOBAL
+      if (type === 'proses') {
+          currentProsesToast = toast;
+      } else if (isRecycled && toast === currentProsesToast) {
+          // --- PERBAIKAN KRUSIAL DI SINI ---
+          // JANGAN lepaskan referensi. Biarkan currentProsesToast
+          // tetap menunjuk ke toast ini (yang sekarang sudah 'sukses' atau 'gagal')
+          // agar `hideToast()` dapat menemukannya.
+          // currentProsesToast = null; // <-- BARIS INI DIHAPUS/DIKOMENTARI
+          // --- AKHIR PERBAIKAN ---
+      }
 
-    // 4. FUNGSI TUTUP LOKAL (Diperbarui setiap kali showToast dipanggil)
-    const dismiss = () => {
-        if (toast.isDismissing) return;
-        toast.isDismissing = true;
-        
-        if (toast === currentProsesToast) currentProsesToast = null;
+      // 4. FUNGSI TUTUP LOKAL (Diperbarui setiap kali showToast dipanggil)
+      const dismiss = () => {
+          if (toast.isDismissing) return;
+          toast.isDismissing = true;
+          
+          if (toast === currentProsesToast) currentProsesToast = null;
 
-        toast.classList.remove('show');
-        toast.classList.add('hide');
-        
-        // Hapus elemen hanya setelah animasi CSS selesai
-        toast.addEventListener('animationend', (e) => {
-            if (e.target === toast && toast.parentNode) {
-                toast.parentNode.removeChild(toast);
-            }
-        }, { once: true });
-    };
+          toast.classList.remove('show');
+          toast.classList.add('hide');
+          
+          // Hapus elemen hanya setelah animasi CSS selesai
+          toast.addEventListener('animationend', (e) => {
+              if (e.target === toast && toast.parentNode) {
+                  toast.parentNode.removeChild(toast);
+              }
+          }, { once: true });
+      };
 
-    // Simpan fungsi dismiss di elemen agar bisa diakses oleh swipe listener
-    toast.dismissFunc = dismiss;
+      // Simpan fungsi dismiss di elemen agar bisa diakses oleh swipe listener
+      toast.dismissFunc = dismiss;
 
-    // Pasang listener untuk tombol close yang baru dibuat
-    const closeBtn = toast.querySelector('.toast-close');
-    if (closeBtn) {
-        // Gunakan satu handler untuk click dan touchstart agar responsif
-        const handleClose = (e) => {
-            e.stopPropagation();
-            e.preventDefault(); // Mencegah double-fire pada beberapa device
-            if (toast.dismissTimer) clearTimeout(toast.dismissTimer);
-            dismiss();
-        };
-        closeBtn.addEventListener('click', handleClose);
-        closeBtn.addEventListener('touchstart', handleClose, { passive: false });
-    }
+      // Pasang listener untuk tombol close yang baru dibuat
+      const closeBtn = toast.querySelector('.toast-close');
+      if (closeBtn) {
+          // Gunakan satu handler untuk click dan touchstart agar responsif
+          const handleClose = (e) => {
+              e.stopPropagation();
+              e.preventDefault(); // Mencegah double-fire pada beberapa device
+              if (toast.dismissTimer) clearTimeout(toast.dismissTimer);
+              dismiss();
+          };
+          closeBtn.addEventListener('click', handleClose);
+          closeBtn.addEventListener('touchstart', handleClose, { passive: false });
+      }
 
-    // 5. JALANKAN TIMER AUTO-CLOSE (Jika bukan tipe proses)
-    if (duration > 0) {
-        toast.dismissTimer = setTimeout(dismiss, duration);
-    }
+      // 5. JALANKAN TIMER AUTO-CLOSE (Jika bukan tipe proses)
+      if (duration > 0) {
+          toast.dismissTimer = setTimeout(dismiss, duration);
+      }
   }
 
   // --- FUNGSI BANTUAN: SWIPE LISTENER ---
@@ -2666,22 +2669,40 @@
     }
   }
 
+  // Salin dan ganti fungsi bukaHalamanMapel() Anda dengan yang ini
   function bukaHalamanMapel() {
-    tampilHalaman('halaman-mapel');
-    setLoading(true, 'Memuat data mapel...', false, false);
-    isFormDirty = false;
-    setMapelTipeDirty(false);
-    setMapelOrderDirty(false);
-    document.getElementById('mapel-table-container').innerHTML = "<p>Memuat data mapel...</p>";
-    document.getElementById('btn-tambah-mapel-baru').disabled = true;
-    document.getElementById('btn-ambil-default').disabled = true;
-    document.getElementById('btn-hapus-semua').disabled = true;
-    google.script.run
-      .withSuccessHandler(onMapelLoaded)
-      .withFailureHandler(onGagal)
-      .getMapel(getToken());
+      tampilHalaman('halaman-mapel');
+      isFormDirty = false;
+      setMapelTipeDirty(false);
+      setMapelOrderDirty(false);
+
+      // --- PENAMBAHAN LOGIKA CACHE ---
+      if (globalMapelList && globalMapelList.length > 0) {
+          console.log("Memuat mapel dari cache klien...");
+          // Panggil handler sukses secara manual dengan data cache
+          // isReRender: true akan memastikan data original (untuk undo) tidak ditimpa
+          onMapelLoaded({ status: "sukses", mapel: globalMapelList, isReRender: true });
+      } else {
+          // Jika tidak ada, baru panggil server
+          console.log("Memuat mapel dari server...");
+          setLoading(true, 'Memuat data mapel...', false, false);
+          document.getElementById('mapel-table-container').innerHTML = "<p>Memuat data mapel...</p>";
+          document.getElementById('btn-tambah-mapel-baru').disabled = true;
+          document.getElementById('btn-ambil-default').disabled = true;
+          document.getElementById('btn-hapus-semua').disabled = true;
+          google.script.run
+              .withSuccessHandler(onMapelLoaded)
+              .withFailureHandler(onGagal)
+              .getMapel(getToken());
+      }
+      // --- AKHIR PERUBAHAN ---
   }
 
+  /**
+   * VERSI REFACTOR (Cepat)
+   * Menggunakan DocumentFragment untuk merender tabel mapel
+   * (Menggantikan logika string HTML di dalam onMapelLoaded)
+   */
   function onMapelLoaded(response) {
       setLoading(false);
 
@@ -2690,77 +2711,130 @@
       document.getElementById('btn-hapus-semua').disabled = false;
 
       const container = document.getElementById('mapel-table-container');
+      container.innerHTML = ""; // 1. Kosongkan container
 
       if (response.status === "sukses") {
-        
-        if (!response.isReRender) {
-          response.mapel.forEach(m => {
-            m.originalUrutan = m.urutan;
-            m.originalIsUS = m.isUS || false;
-            m.originalIsUP = m.isUP || false;
-          });
-        }
-        globalMapelList = response.mapel;
-
-        const jenjangPilihan = jenjangPilihanCache;
-        const labelUjian = (jenjangPilihan === 'MI' || jenjangPilihan === 'MTS' || jenjangPilihan === 'MA') ? 'UM' : 'US';
-
-        let html = '<table class="mapel-table">';
-        html += `<thead><tr><th>Kode Mapel</th><th>Nama Mapel</th><th class="col-cek">${labelUjian}</th><th class="col-cek col-up">UP</th><th>Aksi</th></tr></thead>`;
-        
-        html += '<tbody>';
-        if (globalMapelList.length === 0) {
-          html += '<tr><td colspan="5" style="text-align: center;">Belum ada data mapel.</td></tr>';
-        }
-
-        globalMapelList.forEach((mapel, index) => {
-          const isUS = mapel.isUS || false;
-          const isUP = mapel.isUP || false;
           
-          const isFirst = (index === 0);
-          const isLast = (index === globalMapelList.length - 1);
-          
-          html += `
-            <tr>
-              <td>${mapel.id}</td>
-              <td>${mapel.nama}</td>
-              <td class="col-cek">
-                <input type="checkbox" class="mapel-tipe-cek" data-id="${mapel.id}" data-tipe="us" ${isUS ? 'checked' : ''}>
-              </td>
-              <td class="col-cek col-up">
-                <input type="checkbox" class="mapel-tipe-cek" data-id="${mapel.id}" data-tipe="up" ${isUP ? 'checked' : ''}>
-              </td>
-              <td>
-                <div class="btn-grup-gerak">
-                  <button 
-                    class="btn-aksi btn-move-up btn-move-up-mapel" 
-                    data-id="${mapel.id}" 
-                    ${isFirst ? 'disabled' : ''}
-                    title="Naikkan posisi">
-                      <i class="fas fa-arrow-up"></i>
-                  </button>
-                  <button 
-                    class="btn-aksi btn-move-down btn-move-down-mapel" 
-                    data-id="${mapel.id}" 
-                    ${isLast ? 'disabled' : ''}
-                    title="Turunkan posisi">
-                        <i class="fas fa-arrow-down"></i>
-                  </button>
-                </div>
-                <div class="btn-grup-aksi">
-                  <button class="btn-aksi btn-edit" data-id="${mapel.id}" data-nama="${mapel.nama}"><i class="fas fa-pencil-alt"></i>Edit</button>
-                  <button class="btn-aksi btn-delete" data-id="${mapel.id}"><i class="fas fa-trash-alt"></i>Hapus</button>
-                </div>
-              </td>
-            </tr>
+          if (!response.isReRender) {
+              response.mapel.forEach(m => {
+                  m.originalUrutan = m.urutan;
+                  m.originalIsUS = m.isUS || false;
+                  m.originalIsUP = m.isUP || false;
+              });
+          }
+          globalMapelList = response.mapel;
+
+          const jenjangPilihan = jenjangPilihanCache;
+          const labelUjian = (jenjangPilihan === 'MI' || jenjangPilihan === 'MTS' || jenjangPilihan === 'MA') ? 'UM' : 'US';
+
+          // 2. Buat elemen tabel
+          const table = document.createElement('table');
+          table.className = 'mapel-table';
+
+          // 3. Buat header
+          const thead = table.createTHead();
+          const headerRow = thead.insertRow();
+          headerRow.innerHTML = `
+              <th>Kode Mapel</th>
+              <th>Nama Mapel</th>
+              <th class="col-cek">${labelUjian}</th>
+              <th class="col-cek col-up">UP</th>
+              <th>Aksi</th>
           `;
-        });
 
-        html += '</tbody></table>';
-        container.innerHTML = html;
+          // 4. Buat body dan DocumentFragment
+          const tbody = table.createTBody();
+          const fragment = document.createDocumentFragment();
+
+          if (globalMapelList.length === 0) {
+              const emptyRow = tbody.insertRow();
+              emptyRow.innerHTML = '<td colspan="5" style="text-align: center;">Belum ada data mapel.</td>';
+          } else {
+              globalMapelList.forEach((mapel, index) => {
+                  const isUS = mapel.isUS || false;
+                  const isUP = mapel.isUP || false;
+                  
+                  const isFirst = (index === 0);
+                  const isLast = (index === globalMapelList.length - 1);
+                  
+                  // 5. Buat <tr> baru di memori
+                  const tr = document.createElement('tr');
+                  
+                  // 6. Buat <td> satu per satu
+                  
+                  // TD Kode Mapel
+                  const tdId = tr.insertCell();
+                  tdId.textContent = mapel.id;
+                  
+                  // TD Nama Mapel
+                  const tdNama = tr.insertCell();
+                  tdNama.textContent = mapel.nama;
+                  
+                  // TD Checkbox US/UM
+                  const tdUS = tr.insertCell();
+                  tdUS.className = 'col-cek';
+                  const inputUS = document.createElement('input');
+                  inputUS.type = 'checkbox';
+                  inputUS.className = 'mapel-tipe-cek';
+                  inputUS.dataset.id = mapel.id;
+                  inputUS.dataset.tipe = 'us';
+                  inputUS.checked = isUS;
+                  tdUS.appendChild(inputUS);
+                  
+                  // TD Checkbox UP
+                  const tdUP = tr.insertCell();
+                  tdUP.className = 'col-cek col-up';
+                  const inputUP = document.createElement('input');
+                  inputUP.type = 'checkbox';
+                  inputUP.className = 'mapel-tipe-cek';
+                  inputUP.dataset.id = mapel.id;
+                  inputUP.dataset.tipe = 'up';
+                  inputUP.checked = isUP;
+                  tdUP.appendChild(inputUP);
+                  
+                  // TD Aksi (InnerHTML aman untuk bagian ini)
+                  const tdAksi = tr.insertCell();
+                  tdAksi.innerHTML = `
+                    <div class="btn-grup-gerak">
+                      <button 
+                        class="btn-aksi btn-move-up btn-move-up-mapel" 
+                        data-id="${mapel.id}" 
+                        ${isFirst ? 'disabled' : ''}
+                        title="Naikkan posisi">
+                          <i class="fas fa-arrow-up"></i>
+                      </button>
+                      <button 
+                        class="btn-aksi btn-move-down btn-move-down-mapel" 
+                        data-id="${mapel.id}" 
+                        ${isLast ? 'disabled' : ''}
+                        title="Turunkan posisi">
+                            <i class="fas fa-arrow-down"></i>
+                      </button>
+                    </div>
+                    <div class="btn-grup-aksi">
+                      <button class="btn-aksi btn-edit" data-id="${mapel.id}" data-nama="${mapel.nama}"><i class="fas fa-pencil-alt"></i>Edit</button>
+                      <button class="btn-aksi btn-delete" data-id="${mapel.id}"><i class="fas fa-trash-alt"></i>Hapus</button>
+                    </div>
+                  `;
+                  
+                  // 7. Tambahkan <tr> ke fragment
+                  fragment.appendChild(tr);
+              });
+          }
+          
+          // 8. Tambahkan fragment ke tbody
+          tbody.appendChild(fragment);
+
+          // 9. Tambahkan tabel ke container
+          container.appendChild(table);
+          
       } else {
-        globalMapelList = [];
-        container.innerHTML = `<p class="message error" style="display:block;">Gagal memuat mapel: ${response.message}</p>`;
+          globalMapelList = [];
+          const p = document.createElement('p');
+          p.className = 'message error';
+          p.style.display = 'block';
+          p.textContent = `Gagal memuat mapel: ${response.message}`;
+          container.appendChild(p);
       }
   }
 
@@ -3214,20 +3288,34 @@
       }
   }
 
+  // Salin dan ganti fungsi bukaHalamanSiswa() Anda dengan yang ini
   function bukaHalamanSiswa() {
-    tampilHalaman('halaman-siswa');
-    setLoading(true, 'Memuat data siswa...', false, false);
-    isFormDirty = false;
-    document.getElementById('siswa-table-container').innerHTML = "<p>Memuat data siswa...</p>";
-    document.getElementById('btn-tambah-siswa-baru').disabled = true;
-    document.getElementById('btn-import-siswa').disabled = true;
-    document.getElementById('btn-hapus-semua-siswa').disabled = true;
-    document.getElementById('siswa-filter-kelas').disabled = true;
-    document.getElementById('siswa-sort-by').disabled = true;
-    google.script.run
-      .withSuccessHandler(onSiswaLoaded)
-      .withFailureHandler(onGagal)
-      .getSiswa(getToken());
+      tampilHalaman('halaman-siswa');
+      isFormDirty = false; // Reset dirty flag
+      
+      // --- PENAMBAHAN LOGIKA CACHE ---
+      // Cek apakah data siswa sudah ada di variabel global (cache sisi klien)
+      if (globalSiswaList && globalSiswaList.length > 0) {
+          console.log("Memuat siswa dari cache klien...");
+          // Jika ada, langsung panggil handler sukses dengan data yang ada
+          // Ini menghindari panggilan ke server yang tidak perlu
+          onSiswaLoaded({ status: "sukses", siswa: globalSiswaList });
+      } else {
+          // Jika tidak ada, baru panggil server (cache miss)
+          console.log("Memuat siswa dari server...");
+          setLoading(true, 'Memuat data siswa...', false, false);
+          document.getElementById('siswa-table-container').innerHTML = "<p>Memuat data siswa...</p>";
+          document.getElementById('btn-tambah-siswa-baru').disabled = true;
+          document.getElementById('btn-import-siswa').disabled = true;
+          document.getElementById('btn-hapus-semua-siswa').disabled = true;
+          document.getElementById('siswa-filter-kelas').disabled = true;
+          document.getElementById('siswa-sort-by').disabled = true;
+          google.script.run
+              .withSuccessHandler(onSiswaLoaded)
+              .withFailureHandler(onGagal)
+              .getSiswa(getToken());
+      }
+      // --- AKHIR PERUBAHAN ---
   }
 
   function onSiswaLoaded(response) {
@@ -3334,71 +3422,94 @@ function populateSiswaFilters() {
     renderSiswaTable(processedSiswa);
   }
   
+  /**
+   * VERSI REFACTOR (Cepat)
+   * Merender tabel siswa menggunakan DocumentFragment untuk performa.
+   */
   function renderSiswaTable(siswaList) {
-    const container = document.getElementById('siswa-table-container');
-    
-    let html = '<table class="siswa-table">';
-    html += '<thead><tr><th>Nama Siswa</th><th>NISN</th><th>Kelas</th><th>Aksi</th></tr></thead>';
-  
-    html += '<tbody>';
-    if (siswaList.length === 0) {
-      html += '<tr><td colspan="4" style="text-align: center;">Tidak ada data siswa yang sesuai dengan filter.</td></tr>';
-    }
-  
-    let currentKelas = null;
-    const selectedSort = document.getElementById('siswa-sort-by').value;
-    const isDefaultSort = (selectedSort === 'default');
+      const container = document.getElementById('siswa-table-container');
+      container.innerHTML = ""; // 1. Kosongkan container
 
-    siswaList.forEach((siswa, index) => {
-      
-      const isFirstOfClass = (siswa.kelas !== currentKelas);
-      currentKelas = siswa.kelas;
-      
-      const nextSiswa = siswaList[index + 1];
-      const isLastOfClass = (!nextSiswa || nextSiswa.kelas !== siswa.kelas);
-      
-      let moveButtonsHtml = '';
-      if (isDefaultSort) {
-        moveButtonsHtml = `
-          <button 
-            class="btn-aksi btn-move-up" 
-            data-id="${siswa.id}" 
-            ${isFirstOfClass ? 'disabled' : ''}
-            title="Naikkan posisi">
-              <i class="fas fa-arrow-up"></i>
-          </button>
-          <button 
-            class="btn-aksi btn-move-down" 
-            data-id="${siswa.id}" 
-            ${isLastOfClass ? 'disabled' : ''}
-            title="Turunkan posisi">
-                <i class="fas fa-arrow-down"></i>
-          </button>
-        `;
+      // 2. Buat elemen tabel
+      const table = document.createElement('table');
+      table.className = 'siswa-table';
+
+      // 3. Buat header
+      const thead = table.createTHead();
+      const headerRow = thead.insertRow();
+      // Menggunakan innerHTML di sini aman & cepat karena elemen belum terpasang ke DOM
+      headerRow.innerHTML = '<th>Nama Siswa</th><th>NISN</th><th>Kelas</th><th>Aksi</th>';
+
+      // 4. Buat body dan DocumentFragment
+      const tbody = table.createTBody();
+      const fragment = document.createDocumentFragment(); // <-- KUNCI OPTIMISASI
+
+      if (siswaList.length === 0) {
+          const emptyRow = tbody.insertRow();
+          emptyRow.innerHTML = '<td colspan="4" style="text-align: center;">Tidak ada data siswa yang sesuai dengan filter.</td>';
+      } else {
+          let currentKelas = null;
+          const selectedSort = document.getElementById('siswa-sort-by').value;
+          const isDefaultSort = (selectedSort === 'default');
+
+          siswaList.forEach((siswa, index) => {
+              const isFirstOfClass = (siswa.kelas !== currentKelas);
+              currentKelas = siswa.kelas;
+              
+              const nextSiswa = siswaList[index + 1];
+              const isLastOfClass = (!nextSiswa || nextSiswa.kelas !== siswa.kelas);
+              
+              let moveButtonsHtml = '';
+              if (isDefaultSort) {
+                moveButtonsHtml = `
+                  <button 
+                    class="btn-aksi btn-move-up" 
+                    data-id="${siswa.id}" 
+                    ${isFirstOfClass ? 'disabled' : ''}
+                    title="Naikkan posisi">
+                      <i class="fas fa-arrow-up"></i>
+                  </button>
+                  <button 
+                    class="btn-aksi btn-move-down" 
+                    data-id="${siswa.id}" 
+                    ${isLastOfClass ? 'disabled' : ''}
+                    title="Turunkan posisi">
+                        <i class="fas fa-arrow-down"></i>
+                  </button>
+                `;
+              }
+              
+              // 5. Buat <tr> baru di memori
+              const tr = document.createElement('tr');
+              
+              // 6. Isi <td> menggunakan .innerHTML (ini cepat karena 'tr' belum nyambung ke DOM)
+              tr.innerHTML = `
+                <td>${siswa.nama}</td>
+                <td>${siswa.nisn}</td>
+                <td>${siswa.kelas}</td>
+                <td>
+                  <div class="btn-grup-gerak">
+                    ${moveButtonsHtml}
+                  </div>
+                  <div class="btn-grup-aksi">
+                    <button class="btn-aksi btn-edit btn-edit-siswa"
+                      data-id="${siswa.id}" data-nama="${siswa.nama}" data-nisn="${siswa.nisn}" data-nis-lokal="${siswa.nisLokal}" data-jk="${siswa.jk}" data-tempat-lahir="${siswa.tempatLahir}" data-tgl-lahir="${siswa.tglLahir}" data-kelas="${siswa.kelas}"
+                    ><i class="fas fa-pencil-alt"></i>Edit</button>
+                    <button class="btn-aksi btn-delete btn-delete-siswa" data-id="${siswa.id}" data-nama="${siswa.nama}"><i class="fas fa-trash-alt"></i>Hapus</button>
+                  </div>
+                </td>
+              `;
+              
+              // 7. Tambahkan <tr> ke fragment (bukan ke tbody langsung)
+              fragment.appendChild(tr);
+          });
       }
       
-      html += `
-        <tr>
-          <td>${siswa.nama}</td>
-          <td>${siswa.nisn}</td>
-          <td>${siswa.kelas}</td>
-          <td>
-            <div class="btn-grup-gerak">
-              ${moveButtonsHtml}
-            </div>
-            <div class="btn-grup-aksi">
-              <button class="btn-aksi btn-edit btn-edit-siswa"
-                data-id="${siswa.id}" data-nama="${siswa.nama}" data-nisn="${siswa.nisn}" data-nis-lokal="${siswa.nisLokal}" data-jk="${siswa.jk}" data-tempat-lahir="${siswa.tempatLahir}" data-tgl-lahir="${siswa.tglLahir}" data-kelas="${siswa.kelas}"
-              ><i class="fas fa-pencil-alt"></i>Edit</button>
-              <button class="btn-aksi btn-delete btn-delete-siswa" data-id="${siswa.id}" data-nama="${siswa.nama}"><i class="fas fa-trash-alt"></i>Hapus</button>
-            </div>
-          </td>
-        </tr>
-      `;
-    });
-  
-    html += '</tbody></table>';
-    container.innerHTML = html;
+      // 8. Tambahkan fragment (berisi SEMUA <tr>) ke tbody (HANYA 1x operasi DOM)
+      tbody.appendChild(fragment);
+
+      // 9. Tambahkan tabel yang sudah jadi ke container
+      container.appendChild(table);
   }
 
   function tutupModalSiswa() {
@@ -4163,144 +4274,164 @@ function populateSiswaFilters() {
     // --- AKHIR PERUBAHAN ---
   }
 
+  /**
+   * VERSI REFACTOR (Cepat)
+   * Merender grid input nilai menggunakan DocumentFragment dan pembuatan elemen dinamis.
+   */
   function renderNilaiGridTable() {
-    const container = document.getElementById('input-nilai-table-container');
-    
-    // --- PERBAIKAN: Ambil mapelKelasData ---
-    const { siswaList, mapelList, nilaiData, mapelKelasData } = globalGridData;
-    // --- AKHIR PERBAIKAN ---
-    
-    const selectedKelas = document.getElementById('input-nilai-filter-kelas').value;
-    
-    if (!siswaList || siswaList.length === 0) {
-      let pesan = 'Belum ada data siswa.';
-      if (currentUserRole === 'admin') {
-        pesan += ' Harap isi di menu "Kelola Data Siswa".';
-      }
-      container.innerHTML = `<p style="text-align: center; padding: 20px;">${pesan}</p>`;
-      return;
-    }
-    
-    if (!mapelList || mapelList.length === 0) {
-      const tipeUjian = document.getElementById('judul-halaman-input-nilai').dataset.tipeUjian;
-      const pesan = `Tidak ada mapel yang diatur untuk ${tipeUjian === 'UM' ? 'Ujian Sekolah/Madrasah' : 'Ujian Praktek'}. Harap centang di menu "Kelola Mapel".`;
-      container.innerHTML = `<p style="text-align: center; padding: 20px;">${pesan}</p>`;
-      return;
-    }
+      const container = document.getElementById('input-nilai-table-container');
+      container.innerHTML = ""; // 1. Kosongkan container
 
-    const filteredSiswaList = (selectedKelas === 'semua')
-      ? siswaList
-      : siswaList.filter(siswa => siswa.kelas === selectedKelas);
+      const { siswaList, mapelList, nilaiData, mapelKelasData } = globalGridData;
+      const selectedKelas = document.getElementById('input-nilai-filter-kelas').value;
 
-    if (filteredSiswaList.length === 0 && selectedKelas !== 'semua') {
-        container.innerHTML = '<p style="text-align: center; padding: 20px;">Tidak ada siswa di kelas yang dipilih.</p>';
-        return;
-    } else if (filteredSiswaList.length === 0 && selectedKelas === 'semua') {
-       container.innerHTML = '<p style="text-align: center; padding: 20px;">Tidak ada data siswa.</p>';
-       return;
-    }
-
-    const mapelCount = mapelList.length;
-    
-    let tableClass = 'guru-view';
-    if (currentUserRole === 'guru' && mapelCount > 4) { 
-      tableClass += ' guru-view-many-mapels';
-    }
-    
-    let html = `<table class="input-nilai-table ${tableClass}">`;
-    
-    html += '<thead><tr>';
-    html += '<th>Nama Siswa</th>';
-    mapelList.forEach(mapel => {
-      html += `<th 
-                class="col-mapel clickable-mapel-header" 
-                data-mapel-nama="${mapel.nama}" 
-                title="Klik untuk lihat nama mapel"
-              >
-                ${mapel.id}
-              </th>`;
-    });
-    html += '<th class="th-total th-total-jumlah">Jumlah</th>';
-    html += '<th class="th-total th-total-rata">Rata-Rata</th>';
-    html += '</tr></thead>';
-    
-    html += '<tbody>';
-    filteredSiswaList.forEach(siswa => {
-      html += '<tr>';
-      
-      const namaProper = toProperCase(siswa.nama);
-      const namaFormatted = formatNamaSiswa(namaProper);
-      
-      html += `
-        <td>
-          <span 
-            class="clickable-nama-siswa" 
-            data-nisn="${siswa.nisn}" 
-            data-nama-lengkap="${siswa.nama}"
-            title="Klik untuk lihat NISN"
-          >
-            ${namaFormatted}
-          </span>
-        </td>`;
-      
-      mapelList.forEach(mapel => {
-        const key = `${siswa.id}_${mapel.id}`;
-        
-        const storedNilai = nilaiData[key];
-        let nilai = '';
-        
-        if (storedNilai === 0 || storedNilai === '0') {
-            nilai = 0;
-        } else if (storedNilai) {
-            nilai = storedNilai;
-        }
-
-        // --- ============================================= ---
-        // --- ===== LOGIKA BARU UNTUK DISABLE INPUT ===== ---
-        // --- ============================================= ---
-        let isCellDisabled = false;
-        if (currentUserRole === 'guru' && mapelKelasData) {
-          const allowedClassesForMapel = mapelKelasData[mapel.id];
-          if (allowedClassesForMapel) {
-            // Jika guru ini mengajar mapel ini, cek kelasnya
-            if (!allowedClassesForMapel.includes(siswa.kelas) && !allowedClassesForMapel.includes("*")) {
-              // Guru mengajar mapel ini, TAPI tidak di kelas siswa ini
-              isCellDisabled = true;
-            }
-          } else {
-            // Guru ini TIDAK mengajar mapel ini (seharusnya tidak terjadi, tapi sbg pengaman)
-            isCellDisabled = true;
+      // 2. Logika Pengecekan Data Kosong (Membuat <p> dan keluar)
+      if (!siswaList || siswaList.length === 0) {
+          let pesan = 'Belum ada data siswa.';
+          if (currentUserRole === 'admin') {
+              pesan += ' Harap isi di menu "Kelola Data Siswa".';
           }
-        }
-        // --- AKHIR LOGIKA BARU ---
-        
-        html += `<td class="col-mapel">
-            <input 
-              type="number" 
-              class="input-nilai" 
-              min="0" 
-              max="100" 
-              placeholder="-"
-              value="${nilai}"
-              data-siswa-id="${siswa.id}" 
-              data-mapel-id="${mapel.id}"
-              ${isCellDisabled ? 'disabled' : ''} 
-            >
-          </td>`;
+          const p = document.createElement('p');
+          p.style = "text-align: center; padding: 20px;";
+          p.textContent = pesan;
+          container.appendChild(p);
+          return;
+      }
+      
+      if (!mapelList || mapelList.length === 0) {
+          const tipeUjian = document.getElementById('judul-halaman-input-nilai').dataset.tipeUjian;
+          const pesan = `Tidak ada mapel yang diatur untuk ${tipeUjian === 'UM' ? 'Ujian Sekolah/Madrasah' : 'Ujian Praktek'}. Harap centang di menu "Kelola Mapel".`;
+          const p = document.createElement('p');
+          p.style = "text-align: center; padding: 20px;";
+          p.textContent = pesan;
+          container.appendChild(p);
+          return;
+      }
+
+      const filteredSiswaList = (selectedKelas === 'semua')
+        ? siswaList
+        : siswaList.filter(siswa => siswa.kelas === selectedKelas);
+
+      if (filteredSiswaList.length === 0) {
+          const p = document.createElement('p');
+          p.style = "text-align: center; padding: 20px;";
+          p.textContent = (selectedKelas !== 'semua') ? 'Tidak ada siswa di kelas yang dipilih.' : 'Tidak ada data siswa.';
+          container.appendChild(p);
+          return;
+      }
+
+      // 3. Mulai Buat Tabel
+      const mapelCount = mapelList.length;
+      let tableClass = 'guru-view';
+      if (currentUserRole === 'guru' && mapelCount > 4) { 
+        tableClass += ' guru-view-many-mapels';
+      }
+      
+      const table = document.createElement('table');
+      table.className = `input-nilai-table ${tableClass}`;
+
+      // 4. Buat Header
+      const thead = table.createTHead();
+      const headerRow = thead.insertRow();
+      let headerHTML = '<th>Nama Siswa</th>';
+      mapelList.forEach(mapel => {
+        headerHTML += `<th 
+                        class="col-mapel clickable-mapel-header" 
+                        data-mapel-nama="${mapel.nama}" 
+                        title="Klik untuk lihat nama mapel"
+                      >
+                        ${mapel.id}
+                      </th>`;
       });
-      html += `<td class="col-total col-total-jumlah" id="jumlah_${siswa.id}">0</td>`;
-      html += `<td class="col-total col-total-rata" id="rata_${siswa.id}">0.00</td>`;
-      html += '</tr>';
-    });
-    html += '</tbody></table>';
+      headerHTML += '<th class="th-total th-total-jumlah">Jumlah</th>';
+      headerHTML += '<th class="th-total th-total-rata">Rata-Rata</th>';
+      headerRow.innerHTML = headerHTML;
 
-    container.innerHTML = html;
+      // 5. Buat Body & Fragment
+      const tbody = table.createTBody();
+      const fragment = document.createDocumentFragment(); // <-- KUNCI OPTIMISASI
 
-    if (mapelCount > 0) {
       filteredSiswaList.forEach(siswa => {
-        updateRowTotals(siswa.id, mapelCount);
+          const tr = document.createElement('tr');
+          
+          // --- Buat <td> Nama ---
+          const tdNama = tr.insertCell();
+          const namaProper = toProperCase(siswa.nama);
+          const namaFormatted = formatNamaSiswa(namaProper);
+          tdNama.innerHTML = `
+            <span 
+              class="clickable-nama-siswa" 
+              data-nisn="${siswa.nisn}" 
+              data-nama-lengkap="${siswa.nama}"
+              title="Klik untuk lihat NISN"
+            >
+              ${namaFormatted}
+            </span>`;
+          
+          // --- Loop <td> Mapel ---
+          mapelList.forEach(mapel => {
+              const key = `${siswa.id}_${mapel.id}`;
+              const storedNilai = nilaiData[key];
+              let nilai = '';
+              if (storedNilai === 0 || storedNilai === '0') nilai = 0;
+              else if (storedNilai) nilai = storedNilai;
+
+              let isCellDisabled = false;
+              if (currentUserRole === 'guru' && mapelKelasData) {
+                const allowedClassesForMapel = mapelKelasData[mapel.id];
+                if (allowedClassesForMapel) {
+                  if (!allowedClassesForMapel.includes(siswa.kelas) && !allowedClassesForMapel.includes("*")) {
+                    isCellDisabled = true;
+                  }
+                } else {
+                  isCellDisabled = true;
+                }
+              }
+              
+              const tdMapel = tr.insertCell();
+              tdMapel.className = 'col-mapel';
+              
+              // BUAT INPUT SECARA DINAMIS (Bukan innerHTML)
+              const input = document.createElement('input');
+              input.type = 'number';
+              input.className = 'input-nilai';
+              input.min = 0;
+              input.max = 100;
+              input.placeholder = '-';
+              input.value = nilai; // .value lebih baik dari .setAttribute('value', ...)
+              input.dataset.siswaId = siswa.id;
+              input.dataset.mapelId = mapel.id;
+              input.disabled = isCellDisabled;
+              
+              tdMapel.appendChild(input); // Tambah input ke TD
+          });
+          
+          // --- Buat <td> Total ---
+          const tdJumlah = tr.insertCell();
+          tdJumlah.className = 'col-total col-total-jumlah';
+          tdJumlah.id = `jumlah_${siswa.id}`;
+          tdJumlah.textContent = '0';
+          
+          const tdRata = tr.insertCell();
+          tdRata.className = 'col-total col-total-rata';
+          tdRata.id = `rata_${siswa.id}`;
+          tdRata.textContent = '0.00';
+          
+          // Tambah <tr> ke fragment
+          fragment.appendChild(tr);
       });
-    }
+      
+      // 6. Tambahkan fragment ke body
+      tbody.appendChild(fragment);
+      // 7. Tambahkan tabel ke container
+      container.appendChild(table);
+
+      // 8. Panggil update totals (logic ini tidak berubah)
+      if (mapelCount > 0) {
+        filteredSiswaList.forEach(siswa => {
+          updateRowTotals(siswa.id, mapelCount);
+        });
+      }
   }
 
   function updateRowTotals(siswaId, mapelCount) {
@@ -4405,114 +4536,134 @@ function populateSiswaFilters() {
     selectKelas.value = selectedValue || (kelasList.length === 1 ? kelasList[0] : 'semua');
   }
 
+  /**
+   * VERSI REFACTOR (Cepat)
+   * Merender tabel rekap nilai ujian menggunakan DocumentFragment.
+   */
   function renderRekapNilaiTable() {
-    const container = document.getElementById('rekap-nilai-table-container');
-    
-    const { siswaList, mapelList, nilaiRekapData } = globalGridData;
-    
-    const selectedKelas = document.getElementById('rekap-nilai-filter-kelas').value;
-    
-    if (!siswaList || siswaList.length === 0) {
-      container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada data siswa.</p>';
-      return;
-    }
-    
-    if (!mapelList || mapelList.length === 0) {
-      const tipeUjian = document.getElementById('judul-halaman-input-nilai').dataset.tipeUjian;
-      const pesan = `Tidak ada mapel yang diatur untuk ${tipeUjian === 'UM' ? 'Ujian Sekolah/Madrasah' : 'Ujian Praktek'}. Harap centang di menu "Kelola Mapel".`;
-      container.innerHTML = `<p style="text-align: center; padding: 20px;">${pesan}</p>`;
-      return;
-    }
+      const container = document.getElementById('rekap-nilai-table-container');
+      container.innerHTML = ""; // 1. Kosongkan
 
-    const filteredSiswaList = (selectedKelas === 'semua')
-      ? siswaList
-      : siswaList.filter(siswa => siswa.kelas === selectedKelas);
+      const { siswaList, mapelList, nilaiRekapData } = globalGridData;
+      const selectedKelas = document.getElementById('rekap-nilai-filter-kelas').value;
 
-    if (filteredSiswaList.length === 0 && selectedKelas !== 'semua') {
-        container.innerHTML = '<p style="text-align: center; padding: 20px;">Tidak ada siswa di kelas yang dipilih.</p>';
-        return;
-    } else if (filteredSiswaList.length === 0 && selectedKelas === 'semua') {
-       container.innerHTML = '<p style="text-align: center; padding: 20px;">Tidak ada data siswa.</p>';
-       return;
-    }
+      // 2. Logika Pengecekan Data Kosong
+      if (!siswaList || siswaList.length === 0) {
+          const p = document.createElement('p');
+          p.style = "text-align: center; padding: 20px;";
+          p.textContent = 'Belum ada data siswa.';
+          container.appendChild(p);
+          return;
+      }
+      if (!mapelList || mapelList.length === 0) {
+          const tipeUjian = document.getElementById('judul-halaman-input-nilai').dataset.tipeUjian;
+          const pesan = `Tidak ada mapel yang diatur untuk ${tipeUjian === 'UM' ? 'Ujian Sekolah/Madrasah' : 'Ujian Praktek'}. Harap centang di menu "Kelola Mapel".`;
+          const p = document.createElement('p');
+          p.style = "text-align: center; padding: 20px;";
+          p.textContent = pesan;
+          container.appendChild(p);
+          return;
+      }
+      // ... (pengecekan filteredSiswaList sama seperti di atas) ...
+      const filteredSiswaList = (selectedKelas === 'semua')
+        ? siswaList
+        : siswaList.filter(siswa => siswa.kelas === selectedKelas);
+      if (filteredSiswaList.length === 0) {
+          const p = document.createElement('p');
+          p.style = "text-align: center; padding: 20px;";
+          p.textContent = (selectedKelas !== 'semua') ? 'Tidak ada siswa di kelas yang dipilih.' : 'Tidak ada data siswa.';
+          container.appendChild(p);
+          return;
+      }
+      
+      // 3. Mulai Buat Tabel
+      const table = document.createElement('table');
+      table.className = 'input-nilai-table';
 
-    let html = '<table class="input-nilai-table">';
-    
-    html += '<thead><tr>';
-    html += '<th>Nama Siswa</th>';
-    mapelList.forEach(mapel => {
-      html += `<th 
-                class="col-mapel clickable-mapel-header" 
-                data-mapel-nama="${mapel.nama}" 
-                title="Klik untuk lihat nama mapel"
-              >
-                ${mapel.id}
-              </th>`;
-    });
-    html += '<th class="th-total th-total-jumlah">Jumlah</th>';
-    html += '<th class="th-total th-total-rata">Rata-Rata</th>';
-    html += '<th class="th-total th-total-bulat">Pembulatan</th>';
-    html += '</tr></thead>';
-    
-    html += '<tbody>';
-    filteredSiswaList.forEach(siswa => {
-      html += '<tr>';
-      
-      const namaProper = toProperCase(siswa.nama);
-      const namaFormatted = formatNamaSiswa(namaProper);
-      
-      html += `
-        <td>
-          <span 
-            class="clickable-nama-siswa" 
-            data-nisn="${siswa.nisn}" 
-            data-nama-lengkap="${siswa.nama}"
-            title="Klik untuk lihat NISN"
-          >
-            ${namaFormatted}
-          </span>
-        </td>`;
-      
-      let sum = 0;
-      let count = 0; 
-      
+      // 4. Buat Header
+      const thead = table.createTHead();
+      const headerRow = thead.insertRow();
+      let headerHTML = '<th>Nama Siswa</th>';
       mapelList.forEach(mapel => {
-        const key = `${siswa.id}_${mapel.id}`;
-        const nilai = nilaiRekapData[key];
-        
-        let nilaiTampil = '-';
-        if (nilai !== null && nilai !== undefined) {
-            if (nilai === 0) {
-              nilaiTampil = 0;
-            } else {
-              if (nilai % 1 === 0) {
-                nilaiTampil = nilai.toFixed(0);
-              } else {
-                nilaiTampil = nilai.toFixed(2); 
-              }
-            }
-            sum += nilai;
-            count++; 
-        }
-        
-        html += `<td class="col-mapel" style="text-align: center; font-weight: 500;">
-            ${nilaiTampil}
-          </td>`;
+        headerHTML += `<th 
+                        class="col-mapel clickable-mapel-header" 
+                        data-mapel-nama="${mapel.nama}" 
+                        title="Klik untuk lihat nama mapel"
+                      >
+                        ${mapel.id}
+                      </th>`;
       });
-      
-      const average = (count > 0) ? (sum / count) : 0;
-      
-      const pembulatan = Math.round(average);
-      const sumTampil = parseFloat(sum.toFixed(2));
-      
-      html += `<td class="col-total col-total-jumlah">${sumTampil}</td>`;
-      html += `<td class="col-total col-total-rata">${average.toFixed(2)}</td>`;
-      html += `<td class="col-total col-total-bulat">${pembulatan}</td>`;
-      html += '</tr>';
-    });
-    html += '</tbody></table>';
+      headerHTML += '<th class="th-total th-total-jumlah">Jumlah</th>';
+      headerHTML += '<th class="th-total th-total-rata">Rata-Rata</th>';
+      headerHTML += '<th class="th-total th-total-bulat">Pembulatan</th>';
+      headerRow.innerHTML = headerHTML;
 
-    container.innerHTML = html;
+      // 5. Buat Body & Fragment
+      const tbody = table.createTBody();
+      const fragment = document.createDocumentFragment();
+
+      filteredSiswaList.forEach(siswa => {
+          const tr = document.createElement('tr');
+          
+          let rowHTML = ''; // Kita akan bangun HTML untuk <tr> ini
+          
+          const namaProper = toProperCase(siswa.nama);
+          const namaFormatted = formatNamaSiswa(namaProper);
+          rowHTML += `
+            <td>
+              <span 
+                class="clickable-nama-siswa" 
+                data-nisn="${siswa.nisn}" 
+                data-nama-lengkap="${siswa.nama}"
+                title="Klik untuk lihat NISN"
+              >
+                ${namaFormatted}
+              </span>
+            </td>`;
+          
+          let sum = 0;
+          let count = 0; 
+          
+          mapelList.forEach(mapel => {
+            const key = `${siswa.id}_${mapel.id}`;
+            const nilai = nilaiRekapData[key];
+            
+            let nilaiTampil = '-';
+            if (nilai !== null && nilai !== undefined) {
+                if (nilai === 0) {
+                  nilaiTampil = 0;
+                } else {
+                  if (nilai % 1 === 0) {
+                    nilaiTampil = nilai.toFixed(0);
+                  } else {
+                    nilaiTampil = nilai.toFixed(2); 
+                  }
+                }
+                sum += nilai;
+                count++; 
+            }
+            
+            rowHTML += `<td class="col-mapel" style="text-align: center; font-weight: 500;">
+                ${nilaiTampil}
+              </td>`;
+          });
+          
+          const average = (count > 0) ? (sum / count) : 0;
+          const pembulatan = Math.round(average);
+          const sumTampil = parseFloat(sum.toFixed(2));
+          
+          rowHTML += `<td class="col-total col-total-jumlah">${sumTampil}</td>`;
+          rowHTML += `<td class="col-total col-total-rata">${average.toFixed(2)}</td>`;
+          rowHTML += `<td class="col-total col-total-bulat">${pembulatan}</td>`;
+          
+          tr.innerHTML = rowHTML; // Set innerHTML untuk <tr>
+          fragment.appendChild(tr); // Tambahkan ke fragment
+      });
+
+      // 6. Tambahkan fragment ke body
+      tbody.appendChild(fragment);
+      // 7. Tambahkan tabel ke container
+      container.appendChild(table);
   }
 
   function konfirmasiBersihkanNilai() {
@@ -4667,73 +4818,128 @@ function populateSiswaFilters() {
     selectKelas.value = selectedValue || (kelasList.length === 1 ? kelasList[0] : 'semua');
   }
 
+  /**
+   * VERSI REFACTOR (Cepat)
+   * Merender grid nilai rapor (P atau K) menggunakan DocumentFragment.
+   */
   function renderNilaiRaporGridTable(tipeNilai) {
-    const data = (tipeNilai === 'P') ? globalRaporData.P : globalRaporData.K;
-    const containerId = (tipeNilai === 'P') ? 'input-rapor-table-container' : 'input-rapor-keterampilan-table-container';
-    const totalIdPrefix = (tipeNilai === 'P') ? 'p' : 'k';
+      const data = (tipeNilai === 'P') ? globalRaporData.P : globalRaporData.K;
+      const containerId = (tipeNilai === 'P') ? 'input-rapor-table-container' : 'input-rapor-keterampilan-table-container';
+      const totalIdPrefix = (tipeNilai === 'P') ? 'p' : 'k';
 
-    const container = document.getElementById(containerId);
-    const { siswaList, mapelList, nilaiData } = data;
-    const selectedKelas = document.getElementById('input-rapor-filter-kelas').value;
+      const container = document.getElementById(containerId);
+      container.innerHTML = ""; // 1. Kosongkan container
+      
+      const { siswaList, mapelList, nilaiData } = data;
+      const selectedKelas = document.getElementById('input-rapor-filter-kelas').value;
 
-    if (!siswaList || siswaList.length === 0) {
-      container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada data siswa.</p>';
-      return;
-    }
-    if (!mapelList || mapelList.length === 0) {
-      container.innerHTML = `<p style="text-align: center; padding: 20px;">Belum ada data mata pelajaran.</p>`;
-      return;
-    }
+      // 2. Logika Pengecekan Data Kosong
+      if (!siswaList || siswaList.length === 0) {
+          const p = document.createElement('p');
+          p.style = "text-align: center; padding: 20px;";
+          p.textContent = 'Belum ada data siswa.';
+          container.appendChild(p);
+          return;
+      }
+      if (!mapelList || mapelList.length === 0) {
+          const p = document.createElement('p');
+          p.style = "text-align: center; padding: 20px;";
+          p.textContent = 'Belum ada data mata pelajaran.';
+          container.appendChild(p);
+          return;
+      }
 
-    const filteredSiswaList = (selectedKelas === 'semua')
-      ? siswaList
-      : siswaList.filter(siswa => siswa.kelas === selectedKelas);
+      const filteredSiswaList = (selectedKelas === 'semua')
+        ? siswaList
+        : siswaList.filter(siswa => siswa.kelas === selectedKelas);
 
-    if (filteredSiswaList.length === 0) {
-        container.innerHTML = '<p style="text-align: center; padding: 20px;">Tidak ada siswa di kelas yang dipilih.</p>';
-        return;
-    }
+      if (filteredSiswaList.length === 0) {
+          const p = document.createElement('p');
+          p.style = "text-align: center; padding: 20px;";
+          p.textContent = 'Tidak ada siswa di kelas yang dipilih.';
+          container.appendChild(p);
+          return;
+      }
 
-    let html = '<table class="input-nilai-table guru-view">';
-    html += '<thead><tr><th>Nama Siswa</th>';
-    mapelList.forEach(mapel => {
-      html += `<th class="col-mapel clickable-mapel-header" data-mapel-nama="${mapel.nama}" title="Klik untuk lihat nama mapel">${mapel.id}</th>`;
-    });
-    html += '<th class="th-total th-total-jumlah">Jumlah</th>';
-    html += '<th class="th-total th-total-rata">Rata-Rata</th>';
-    html += '</tr></thead>';
+      // 3. Mulai Buat Tabel
+      const table = document.createElement('table');
+      table.className = 'input-nilai-table guru-view'; // Asumsi guru-view default
 
-    html += '<tbody>';
-    filteredSiswaList.forEach(siswa => {
-      html += '<tr>';
-      const namaProper = toProperCase(siswa.nama);
-      const namaFormatted = formatNamaSiswa(namaProper);
-      html += `<td><span class="clickable-nama-siswa" data-nisn="${siswa.nisn}" data-nama-lengkap="${siswa.nama}" title="Klik untuk lihat NISN">${namaFormatted}</span></td>`;
-
+      // 4. Buat Header
+      const thead = table.createTHead();
+      const headerRow = thead.insertRow();
+      let headerHTML = '<th>Nama Siswa</th>';
       mapelList.forEach(mapel => {
-        const key = `${siswa.id}_${mapel.id}`;
-        const storedNilai = nilaiData[key];
-        let nilai = '';
-        if (storedNilai === 0 || storedNilai === '0') {
-            nilai = 0;
-        } else if (storedNilai) {
-            nilai = storedNilai;
-        }
-        html += `<td class="col-mapel"><input type="number" class="input-nilai" min="0" max="100" placeholder="-" value="${nilai}" data-siswa-id="${siswa.id}" data-mapel-id="${mapel.id}"></td>`;
+        headerHTML += `<th class="col-mapel clickable-mapel-header" data-mapel-nama="${mapel.nama}" title="Klik untuk lihat nama mapel">${mapel.id}</th>`;
       });
-      html += `<td class="col-total col-total-jumlah" id="jumlah_rapor_${totalIdPrefix}_${siswa.id}">0</td>`;
-      html += `<td class="col-total col-total-rata" id="rata_rapor_${totalIdPrefix}_${siswa.id}">0.00</td>`;
-      html += '</tr>';
-    });
-    html += '</tbody></table>';
-    container.innerHTML = html;
+      headerHTML += '<th class="th-total th-total-jumlah">Jumlah</th>';
+      headerHTML += '<th class="th-total th-total-rata">Rata-Rata</th>';
+      headerRow.innerHTML = headerHTML;
 
-    const mapelCount = mapelList.length;
-    if (mapelCount > 0) {
+      // 5. Buat Body & Fragment
+      const tbody = table.createTBody();
+      const fragment = document.createDocumentFragment();
+
       filteredSiswaList.forEach(siswa => {
-        updateRowTotalsRapor(siswa.id, mapelCount, tipeNilai);
+          const tr = document.createElement('tr');
+          
+          // <td> Nama
+          const tdNama = tr.insertCell();
+          const namaProper = toProperCase(siswa.nama);
+          const namaFormatted = formatNamaSiswa(namaProper);
+          tdNama.innerHTML = `<span class="clickable-nama-siswa" data-nisn="${siswa.nisn}" data-nama-lengkap="${siswa.nama}" title="Klik untuk lihat NISN">${namaFormatted}</span>`;
+
+          // Loop <td> Mapel
+          mapelList.forEach(mapel => {
+              const key = `${siswa.id}_${mapel.id}`;
+              const storedNilai = nilaiData[key];
+              let nilai = '';
+              if (storedNilai === 0 || storedNilai === '0') nilai = 0;
+              else if (storedNilai) nilai = storedNilai;
+              
+              const tdMapel = tr.insertCell();
+              tdMapel.className = 'col-mapel';
+              
+              // Buat <input> dinamis
+              const input = document.createElement('input');
+              input.type = 'number';
+              input.className = 'input-nilai';
+              input.min = 0;
+              input.max = 100;
+              input.placeholder = '-';
+              input.value = nilai;
+              input.dataset.siswaId = siswa.id;
+              input.dataset.mapelId = mapel.id;
+              
+              tdMapel.appendChild(input);
+          });
+
+          // <td> Total
+          const tdJumlah = tr.insertCell();
+          tdJumlah.className = 'col-total col-total-jumlah';
+          tdJumlah.id = `jumlah_rapor_${totalIdPrefix}_${siswa.id}`;
+          tdJumlah.textContent = '0';
+          
+          const tdRata = tr.insertCell();
+          tdRata.className = 'col-total col-total-rata';
+          tdRata.id = `rata_rapor_${totalIdPrefix}_${siswa.id}`;
+          tdRata.textContent = '0.00';
+
+          fragment.appendChild(tr);
       });
-    }
+
+      // 6. Tambahkan fragment ke body
+      tbody.appendChild(fragment);
+      // 7. Tambahkan tabel ke container
+      container.appendChild(table);
+
+      // 8. Update totals
+      const mapelCount = mapelList.length;
+      if (mapelCount > 0) {
+        filteredSiswaList.forEach(siswa => {
+          updateRowTotalsRapor(siswa.id, mapelCount, tipeNilai);
+        });
+      }
   }
 
   function updateRowTotalsRapor(siswaId, mapelCount, tipeNilai) {
@@ -4863,80 +5069,97 @@ function populateSiswaFilters() {
     showMessage('input-rapor-message', `Formulir ${tipeText} telah dibersihkan.`, false);
   }
 
+  /**
+   * VERSI REFACTOR (Cepat)
+   * Merender rekap rapor per semester menggunakan DocumentFragment.
+   */
   function renderRekapRaporSemesterTable() {
-    const container = document.getElementById('rekap-rapor-semester-table-container');
-    const { siswaList, mapelList, nilaiRekapData } = globalRaporData.Rekap; 
-    const selectedKelas = document.getElementById('input-rapor-filter-kelas').value;
+      const container = document.getElementById('rekap-rapor-semester-table-container');
+      container.innerHTML = ""; // 1. Kosongkan
 
-    if (!siswaList || siswaList.length === 0) {
-      container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada data siswa.</p>';
-      return;
-    }
-    if (!mapelList || mapelList.length === 0) {
-      container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada data mata pelajaran.</p>';
-      return;
-    }
+      const { siswaList, mapelList, nilaiRekapData } = globalRaporData.Rekap; 
+      const selectedKelas = document.getElementById('input-rapor-filter-kelas').value;
 
-    const filteredSiswaList = (selectedKelas === 'semua')
-      ? siswaList
-      : siswaList.filter(siswa => siswa.kelas === selectedKelas);
+      // 2. Logika Pengecekan Data Kosong
+      if (!siswaList || siswaList.length === 0) {
+          container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada data siswa.</p>';
+          return;
+      }
+      if (!mapelList || mapelList.length === 0) {
+          container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada data mata pelajaran.</p>';
+          return;
+      }
 
-    if (filteredSiswaList.length === 0) {
-        container.innerHTML = '<p style="text-align: center; padding: 20px;">Tidak ada siswa di kelas yang dipilih.</p>';
-        return;
-    }
+      const filteredSiswaList = (selectedKelas === 'semua')
+        ? siswaList
+        : siswaList.filter(siswa => siswa.kelas === selectedKelas);
 
-    let html = '<table class="input-nilai-table guru-view">';
+      if (filteredSiswaList.length === 0) {
+          container.innerHTML = '<p style="text-align: center; padding: 20px;">Tidak ada siswa di kelas yang dipilih.</p>';
+          return;
+      }
 
-    html += '<thead><tr><th>Nama Siswa</th>';
-    mapelList.forEach(mapel => {
-      html += `<th class="col-mapel clickable-mapel-header" data-mapel-nama="${mapel.nama}" title="Klik untuk lihat nama mapel">${mapel.id}</th>`;
-    });
+      // 3. Mulai Buat Tabel
+      const table = document.createElement('table');
+      table.className = 'input-nilai-table guru-view';
 
-    html += '<th class="th-total th-total-jumlah">Jumlah</th>';
-    html += '<th class="th-total th-total-rata">Rata-Rata</th>';
-    html += '<th class="th-total th-total-bulat">Pembulatan</th>';
-
-    html += '</tr></thead>';
-
-    html += '<tbody>';
-    filteredSiswaList.forEach(siswa => {
-      html += '<tr>';
-      const namaProper = toProperCase(siswa.nama);
-      const namaFormatted = formatNamaSiswa(namaProper);
-      html += `<td><span class="clickable-nama-siswa" data-nisn="${siswa.nisn}" data-nama-lengkap="${siswa.nama}" title="Klik untuk lihat NISN">${namaFormatted}</span></td>`; 
-
-      let sum = 0;
-      let count = 0;
-
+      // 4. Buat Header
+      const thead = table.createTHead();
+      const headerRow = thead.insertRow();
+      let headerHTML = '<th>Nama Siswa</th>';
       mapelList.forEach(mapel => {
-        const key = `${siswa.id}_${mapel.id}`;
-        const nilai = nilaiRekapData[key];
+        headerHTML += `<th class="col-mapel clickable-mapel-header" data-mapel-nama="${mapel.nama}" title="Klik untuk lihat nama mapel">${mapel.id}</th>`;
+      });
+      headerHTML += '<th class="th-total th-total-jumlah">Jumlah</th>';
+      headerHTML += '<th class="th-total th-total-rata">Rata-Rata</th>';
+      headerHTML += '<th class="th-total th-total-bulat">Pembulatan</th>';
+      headerRow.innerHTML = headerHTML;
 
-        let nilaiTampil = '-';
-        if (nilai !== null && nilai !== undefined) {
-          nilaiTampil = nilai;
+      // 5. Buat Body & Fragment
+      const tbody = table.createTBody();
+      const fragment = document.createDocumentFragment();
 
-          sum += parseFloat(nilai);
-          count++;
-        }
+      filteredSiswaList.forEach(siswa => {
+          const tr = document.createElement('tr');
+          
+          let rowHTML = ''; // Kita akan bangun HTML untuk <tr> ini
+          
+          const namaProper = toProperCase(siswa.nama);
+          const namaFormatted = formatNamaSiswa(namaProper);
+          rowHTML += `<td><span class="clickable-nama-siswa" data-nisn="${siswa.nisn}" data-nama-lengkap="${siswa.nama}" title="Klik untuk lihat NISN">${namaFormatted}</span></td>`; 
 
-        html += `<td class="col-mapel" style="text-align: center; font-weight: 500;">${nilaiTampil}</td>`;
+          let sum = 0;
+          let count = 0;
+
+          mapelList.forEach(mapel => {
+              const key = `${siswa.id}_${mapel.id}`;
+              const nilai = nilaiRekapData[key];
+
+              let nilaiTampil = '-';
+              if (nilai !== null && nilai !== undefined) {
+                  nilaiTampil = nilai; // Nilai sudah dibulatkan dari server
+                  sum += parseFloat(nilai);
+                  count++;
+              }
+              rowHTML += `<td class="col-mapel" style="text-align: center; font-weight: 500;">${nilaiTampil}</td>`;
+          });
+
+          const average = (count > 0) ? (sum / count) : 0;
+          const pembulatan = Math.round(average);
+          const sumTampil = parseFloat(sum.toFixed(2));
+
+          rowHTML += `<td class="col-total col-total-jumlah">${sumTampil}</td>`;
+          rowHTML += `<td class="col-total col-total-rata">${average.toFixed(2)}</td>`;
+          rowHTML += `<td class="col-total col-total-bulat">${pembulatan}</td>`;
+
+          tr.innerHTML = rowHTML;
+          fragment.appendChild(tr);
       });
 
-      const average = (count > 0) ? (sum / count) : 0;
-      const pembulatan = Math.round(average);
-      const sumTampil = parseFloat(sum.toFixed(2));
-
-      html += `<td class="col-total col-total-jumlah">${sumTampil}</td>`;
-      html += `<td class="col-total col-total-rata">${average.toFixed(2)}</td>`;
-      html += `<td class="col-total col-total-bulat">${pembulatan}</td>`;
-
-      html += '</tr>';
-    });
-    html += '</tbody></table>';
-
-    container.innerHTML = html;
+      // 6. Tambahkan fragment ke body
+      tbody.appendChild(fragment);
+      // 7. Tambahkan tabel ke container
+      container.appendChild(table);
   }
 
   function bukaHalamanRekapRapor() {
@@ -4979,84 +5202,104 @@ function populateSiswaFilters() {
     selectKelas.value = selectedValue || (kelasList.length === 1 ? kelasList[0] : 'semua');
   }
 
+  /**
+   * VERSI REFACTOR (Cepat)
+   * Merender rekap rapor total menggunakan DocumentFragment.
+   */
   function renderRekapRaporTable() {
-    const container = document.getElementById('rekap-rapor-table-container');
-    const { siswaList, mapelList, nilaiRekapData } = globalRaporGridData; 
-    const selectedKelas = document.getElementById('rekap-rapor-filter-kelas').value;
+      const container = document.getElementById('rekap-rapor-table-container');
+      container.innerHTML = ""; // 1. Kosongkan
 
-    if (!siswaList || siswaList.length === 0) {
-      container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada data siswa.</p>';
-      return;
-    }
-    if (!mapelList || mapelList.length === 0) {
-      container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada data mata pelajaran.</p>';
-      return;
-    }
+      const { siswaList, mapelList, nilaiRekapData } = globalRaporGridData; 
+      const selectedKelas = document.getElementById('rekap-rapor-filter-kelas').value;
 
-    const filteredSiswaList = (selectedKelas === 'semua')
-      ? siswaList
-      : siswaList.filter(siswa => siswa.kelas === selectedKelas);
+      // 2. Logika Pengecekan Data Kosong
+      if (!siswaList || siswaList.length === 0) {
+          container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada data siswa.</p>';
+          return;
+      }
+      if (!mapelList || mapelList.length === 0) {
+          container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada data mata pelajaran.</p>';
+          return;
+      }
 
-    if (filteredSiswaList.length === 0) {
-        container.innerHTML = '<p style="text-align: center; padding: 20px;">Tidak ada siswa di kelas yang dipilih.</p>';
-        return;
-    }
+      const filteredSiswaList = (selectedKelas === 'semua')
+        ? siswaList
+        : siswaList.filter(siswa => siswa.kelas === selectedKelas);
 
-    let html = '<table class="input-nilai-table">';
-    
-    html += '<thead><tr><th>Nama Siswa</th>';
-    mapelList.forEach(mapel => {
-      html += `<th class="col-mapel clickable-mapel-header" data-mapel-nama="${mapel.nama}" title="Klik untuk lihat nama mapel">${mapel.id}</th>`;
-    });
-    html += '<th class="th-total th-total-jumlah">Jumlah</th>';
-    html += '<th class="th-total th-total-rata">Rata-Rata</th>';
-    html += '<th class="th-total th-total-bulat">Pembulatan</th>';
-    html += '</tr></thead>';
-    
-    html += '<tbody>';
-    filteredSiswaList.forEach(siswa => {
-      html += '<tr>';
-      const namaProper = toProperCase(siswa.nama);
-      const namaFormatted = formatNamaSiswa(namaProper);
-      html += `<td><span class="clickable-nama-siswa" data-nisn="${siswa.nisn}" data-nama-lengkap="${siswa.nama}" title="Klik untuk lihat NISN">${namaFormatted}</span></td>`; 
-      
-      let sum = 0;
-      let count = 0;
-      
+      if (filteredSiswaList.length === 0) {
+          container.innerHTML = '<p style="text-align: center; padding: 20px;">Tidak ada siswa di kelas yang dipilih.</p>';
+          return;
+      }
+
+      // 3. Mulai Buat Tabel
+      const table = document.createElement('table');
+      table.className = 'input-nilai-table';
+
+      // 4. Buat Header
+      const thead = table.createTHead();
+      const headerRow = thead.insertRow();
+      let headerHTML = '<th>Nama Siswa</th>';
       mapelList.forEach(mapel => {
-        const key = `${siswa.id}_${mapel.id}`;
-        const nilai = nilaiRekapData[key];
-        
-        let nilaiTampil = '-';
-        if (nilai !== null && nilai !== undefined) {
-            if (nilai === 0) {
-              nilaiTampil = 0;
-            } else {
-              if (nilai % 1 !== 0) {
-                nilaiTampil = nilai.toFixed(2); 
-              } else {
-                nilaiTampil = nilai.toFixed(0);
-              }
-            }
-            sum += nilai;
-            count++;
-        }
-        
-        html += `<td class="col-mapel" style="text-align: center; font-weight: 500;">${nilaiTampil}</td>`;
+        headerHTML += `<th class="col-mapel clickable-mapel-header" data-mapel-nama="${mapel.nama}" title="Klik untuk lihat nama mapel">${mapel.id}</th>`;
       });
+      headerHTML += '<th class="th-total th-total-jumlah">Jumlah</th>';
+      headerHTML += '<th class="th-total th-total-rata">Rata-Rata</th>';
+      headerHTML += '<th class="th-total th-total-bulat">Pembulatan</th>';
+      headerRow.innerHTML = headerHTML;
       
-      const average = (count > 0) ? (sum / count) : 0;
-      const pembulatan = Math.round(average);
-      const sumTampil = parseFloat(sum.toFixed(2));
+      // 5. Buat Body & Fragment
+      const tbody = table.createTBody();
+      const fragment = document.createDocumentFragment();
       
-      html += `<td class="col-total col-total-jumlah">${sumTampil}</td>`;
-      html += `<td class="col-total col-total-rata">${average.toFixed(2)}</td>`;
-      html += `<td class="col-total col-total-bulat">${pembulatan}</td>`;
-      html += '</tr>';
-    });
-    html += '</tbody></table>';
+      filteredSiswaList.forEach(siswa => {
+          const tr = document.createElement('tr');
+          let rowHTML = '';
+          
+          const namaProper = toProperCase(siswa.nama);
+          const namaFormatted = formatNamaSiswa(namaProper);
+          rowHTML += `<td><span class="clickable-nama-siswa" data-nisn="${siswa.nisn}" data-nama-lengkap="${siswa.nama}" title="Klik untuk lihat NISN">${namaFormatted}</span></td>`; 
+          
+          let sum = 0;
+          let count = 0;
+          
+          mapelList.forEach(mapel => {
+              const key = `${siswa.id}_${mapel.id}`;
+              const nilai = nilaiRekapData[key];
+              
+              let nilaiTampil = '-';
+              if (nilai !== null && nilai !== undefined) {
+                  if (nilai === 0) {
+                    nilaiTampil = 0;
+                  } else {
+                    if (nilai % 1 !== 0) {
+                      nilaiTampil = nilai.toFixed(2); 
+                    } else {
+                      nilaiTampil = nilai.toFixed(0);
+                    }
+                  }
+                  sum += nilai;
+                  count++;
+              }
+              rowHTML += `<td class="col-mapel" style="text-align: center; font-weight: 500;">${nilaiTampil}</td>`;
+          });
+          
+          const average = (count > 0) ? (sum / count) : 0;
+          const pembulatan = Math.round(average);
+          const sumTampil = parseFloat(sum.toFixed(2));
+          
+          rowHTML += `<td class="col-total col-total-jumlah">${sumTampil}</td>`;
+          rowHTML += `<td class="col-total col-total-rata">${average.toFixed(2)}</td>`;
+          rowHTML += `<td class="col-total col-total-bulat">${pembulatan}</td>`;
+          
+          tr.innerHTML = rowHTML;
+          fragment.appendChild(tr);
+      });
 
-    container.innerHTML = html;
+      // 6. Tambahkan fragment ke body
+      tbody.appendChild(fragment);
+      // 7. Tambahkan tabel ke container
+      container.appendChild(table);
   }
 
   function bukaHalamanSemester() {
@@ -5236,106 +5479,120 @@ function populateSiswaFilters() {
     }
   }
 
-  function bukaHalamanNilaiIjazah() {
-    tampilHalaman('halaman-nilai-ijazah');
-    hideMessage('nilai-ijazah-message');
-    document.getElementById('ijazah-ujian-table-container').innerHTML = '<p>Memuat data...</p>';
-    document.getElementById('ijazah-rapor-table-container').innerHTML = '<p>Memuat data...</p>';
-    document.getElementById('ijazah-final-table-container').innerHTML = '<p>Memuat data...</p>';
-    document.getElementById('ijazah-filter-kelas').innerHTML = '<option value="semua">-- Tampilkan Semua Kelas --</option>';
-    globalIjazahData = { siswaList: [], mapelList: [], dataUjian: {}, dataRapor: {}, dataIjazah: {} };
-    showWeightedUjian = true; showWeightedRapor = true;
-    document.querySelector('#ijazah-tab-bar .tab-link[data-tab="ujian"]').innerText = 'Nilai Ujian (...)';
-    document.querySelector('#ijazah-tab-bar .tab-link[data-tab="rapor"]').innerText = 'Nilai Rapor (...)';
-    document.querySelector('#ijazah-tab-bar .tab-link[data-tab="ijazah"]').innerText = 'Nilai Ijazah (...)';
-    setLoading(true, 'Memuat nilai ijazah...', false, false);
-    google.script.run.withSuccessHandler(onNilaiIjazahLoaded).withFailureHandler(onGagal).getNilaiIjazahData(getToken());
+  // Salin dan GANTI fungsi bukaHalamanNilaiIjazah() Anda dengan yang ini
+  function bukaHalamanNilaiIjazah(isRecalculating = false) { // <-- TAMBAH PARAMETER
+      tampilHalaman('halaman-nilai-ijazah');
+      hideMessage('nilai-ijazah-message');
+      document.getElementById('ijazah-ujian-table-container').innerHTML = '<p>Memuat data...</p>';
+      document.getElementById('ijazah-rapor-table-container').innerHTML = '<p>Memuat data...</p>';
+      document.getElementById('ijazah-final-table-container').innerHTML = '<p>Memuat data...</p>';
+      document.getElementById('ijazah-filter-kelas').innerHTML = '<option value="semua">-- Tampilkan Semua Kelas --</option>';
+      globalIjazahData = { siswaList: [], mapelList: [], dataUjian: {}, dataRapor: {}, dataIjazah: {} };
+      showWeightedUjian = true; showWeightedRapor = true;
+      document.querySelector('#ijazah-tab-bar .tab-link[data-tab="ujian"]').innerText = 'Nilai Ujian (...)';
+      document.querySelector('#ijazah-tab-bar .tab-link[data-tab="rapor"]').innerText = 'Nilai Rapor (...)';
+      document.querySelector('#ijazah-tab-bar .tab-link[data-tab="ijazah"]').innerText = 'Nilai Ijazah (...)';
+      
+      // --- PERBAIKAN ---
+      // Hanya panggil setLoading jika INI BUKAN bagian dari recalculate flow.
+      // Ini mencegah toast "Memuat nilai..." muncul dan menimpa toast "Sukses".
+      if (!isRecalculating) {
+        setLoading(true, 'Memuat nilai ijazah...', false, false);
+      }
+      // --- AKHIR PERBAIKAN ---
+      
+      google.script.run.withSuccessHandler(onNilaiIjazahLoaded).withFailureHandler(onGagal).getNilaiIjazahData(getToken());
   }
 
+  // Salin dan GANTI fungsi onNilaiIjazahLoaded() Anda dengan yang ini
   function onNilaiIjazahLoaded(response) {
-    setLoading(false);
-    
-    const btnToggleUjian = document.getElementById('btn-toggle-ujian-view');
-    const btnToggleRapor = document.getElementById('btn-toggle-rapor-view');
-    
-    const exportControlsUjian = document.getElementById('export-controls-ujian');
-    const exportControlsRapor = document.getElementById('export-controls-rapor');
-    const exportControlsIjazah = document.getElementById('export-controls-ijazah');
+      // --- PERBAIKAN ---
+      // Panggil setLoading(false) di paling atas.
+      // Ini akan membersihkan toast "Proses..." atau "Memuat..."
+      setLoading(false);
+      // --- AKHIR PERBAIKAN ---
+      
+      const btnToggleUjian = document.getElementById('btn-toggle-ujian-view');
+      const btnToggleRapor = document.getElementById('btn-toggle-rapor-view');
+      
+      const exportControlsUjian = document.getElementById('export-controls-ujian');
+      const exportControlsRapor = document.getElementById('export-controls-rapor');
+      const exportControlsIjazah = document.getElementById('export-controls-ijazah');
 
-    const infoUpdateEl = document.getElementById('ijazah-info-update');
-    infoUpdateEl.style.display = 'none';
+      const infoUpdateEl = document.getElementById('ijazah-info-update');
+      infoUpdateEl.style.display = 'none';
 
-    if (response.status !== 'sukses') {
-      document.getElementById('ijazah-ujian-table-container').innerHTML = `<p class="message error" style="display:block;">Gagal memuat data: ${response.message}</p>`;
-      document.getElementById('ijazah-rapor-table-container').innerHTML = '';
-      document.getElementById('ijazah-final-table-container').innerHTML = '';
-      globalIjazahData = { siswaList: [], mapelList: [], dataUjian: {}, dataRapor: {}, dataIjazah: {} };
+      if (response.status !== 'sukses') {
+        document.getElementById('ijazah-ujian-table-container').innerHTML = `<p class="message error" style="display:block;">Gagal memuat data: ${response.message}</p>`;
+        document.getElementById('ijazah-rapor-table-container').innerHTML = '';
+        document.getElementById('ijazah-final-table-container').innerHTML = '';
+        globalIjazahData = { siswaList: [], mapelList: [], dataUjian: {}, dataRapor: {}, dataIjazah: {} };
+        
+        const tabUjian = document.querySelector('#ijazah-tab-bar .tab-link[data-tab="ujian"]');
+        if (tabUjian) tabUjian.innerText = 'Nilai Ujian (Gagal)';
+        const tabRapor = document.querySelector('#ijazah-tab-bar .tab-link[data-tab="rapor"]');
+        if (tabRapor) tabRapor.innerText = 'Nilai Rapor (Gagal)';
+        const tabIjazah = document.querySelector('#ijazah-tab-bar .tab-link[data-tab="ijazah"]');
+        if (tabIjazah) tabIjazah.innerText = 'Nilai Ijazah (Gagal)';
+        
+        if (btnToggleUjian) btnToggleUjian.style.display = 'none';
+        if (btnToggleRapor) btnToggleRapor.style.display = 'none';
+        
+        if (exportControlsUjian) exportControlsUjian.style.display = 'none';
+        if (exportControlsRapor) exportControlsRapor.style.display = 'none';
+        if (exportControlsIjazah) exportControlsIjazah.style.display = 'none';
+
+        if (response.message.includes("belum pernah dikalkulasi")) {
+          showToast(response.message, 'gagal');
+        }
+        return;
+      }
+
+      if (btnToggleUjian) {
+        btnToggleUjian.style.display = 'inline-flex';
+        btnToggleUjian.innerText = 'Lihat Nilai Asli';
+        btnToggleUjian.classList.remove('toggled');
+        document.querySelector('#tab-ujian-content .table-content-header').innerText = 'Nilai Ujian (Setelah Diberi Bobot)';
+      }
+      if (btnToggleRapor) {
+        btnToggleRapor.style.display = 'inline-flex';
+        btnToggleRapor.innerText = 'Lihat Nilai Asli';
+        btnToggleRapor.classList.remove('toggled');
+        document.querySelector('#tab-rapor-content .table-content-header').innerText = 'Nilai Rapor (Setelah Diberi Bobot)';
+      }
+
+      const bobotUjian = response.data.bobotUjianPct || 0;
+      const bobotRapor = response.data.bobotRaporPct || 0;
+      const kkmValue = response.data.kkm || 0;
       
       const tabUjian = document.querySelector('#ijazah-tab-bar .tab-link[data-tab="ujian"]');
-      if (tabUjian) tabUjian.innerText = 'Nilai Ujian (Gagal)';
-      const tabRapor = document.querySelector('#ijazah-tab-bar .tab-link[data-tab="rapor"]');
-      if (tabRapor) tabRapor.innerText = 'Nilai Rapor (Gagal)';
-      const tabIjazah = document.querySelector('#ijazah-tab-bar .tab-link[data-tab="ijazah"]');
-      if (tabIjazah) tabIjazah.innerText = 'Nilai Ijazah (Gagal)';
-      
-      if (btnToggleUjian) btnToggleUjian.style.display = 'none';
-      if (btnToggleRapor) btnToggleRapor.style.display = 'none';
-      
-      if (exportControlsUjian) exportControlsUjian.style.display = 'none';
-      if (exportControlsRapor) exportControlsRapor.style.display = 'none';
-      if (exportControlsIjazah) exportControlsIjazah.style.display = 'none';
-
-      if (response.message.includes("belum pernah dikalkulasi")) {
-        showToast(response.message, 'gagal');
+      if (tabUjian) {
+        tabUjian.innerText = `Nilai Ujian (${bobotUjian}%)`;
       }
-      return;
-    }
+      
+      const tabRapor = document.querySelector('#ijazah-tab-bar .tab-link[data-tab="rapor"]');
+      if (tabRapor) {
+        tabRapor.innerText = `Nilai Rapor (${bobotRapor}%)`;
+      }
+      
+      const tabIjazah = document.querySelector('#ijazah-tab-bar .tab-link[data-tab="ijazah"]');
+      if (tabIjazah) {
+        tabIjazah.innerText = `Nilai Ijazah (${kkmValue})`;
+      }
 
-    if (btnToggleUjian) {
-      btnToggleUjian.style.display = 'inline-flex';
-      btnToggleUjian.innerText = 'Lihat Nilai Asli';
-      btnToggleUjian.classList.remove('toggled');
-      document.querySelector('#tab-ujian-content .table-content-header').innerText = 'Nilai Ujian (Setelah Diberi Bobot)';
-    }
-    if (btnToggleRapor) {
-      btnToggleRapor.style.display = 'inline-flex';
-      btnToggleRapor.innerText = 'Lihat Nilai Asli';
-      btnToggleRapor.classList.remove('toggled');
-      document.querySelector('#tab-rapor-content .table-content-header').innerText = 'Nilai Rapor (Setelah Diberi Bobot)';
-    }
+      globalIjazahData = response.data;
+      
+      populateNilaiIjazahFilter(globalIjazahData.siswaList);
 
-    const bobotUjian = response.data.bobotUjianPct || 0;
-    const bobotRapor = response.data.bobotRaporPct || 0;
-    const kkmValue = response.data.kkm || 0;
-    
-    const tabUjian = document.querySelector('#ijazah-tab-bar .tab-link[data-tab="ujian"]');
-    if (tabUjian) {
-      tabUjian.innerText = `Nilai Ujian (${bobotUjian}%)`;
-    }
-    
-    const tabRapor = document.querySelector('#ijazah-tab-bar .tab-link[data-tab="rapor"]');
-    if (tabRapor) {
-      tabRapor.innerText = `Nilai Rapor (${bobotRapor}%)`;
-    }
-    
-    const tabIjazah = document.querySelector('#ijazah-tab-bar .tab-link[data-tab="ijazah"]');
-    if (tabIjazah) {
-      tabIjazah.innerText = `Nilai Ijazah (${kkmValue})`;
-    }
-
-    globalIjazahData = response.data;
-    
-    populateNilaiIjazahFilter(globalIjazahData.siswaList);
-
-    renderNilaiIjazahTabel('ujian');
-    renderNilaiIjazahTabel('rapor');
-    renderNilaiIjazahTabel('ijazah');
-    
-    if (exportControlsUjian) exportControlsUjian.style.display = 'flex';
-    if (exportControlsRapor) exportControlsRapor.style.display = 'flex';
-    if (exportControlsIjazah) exportControlsIjazah.style.display = 'flex';
-    
-    activateIjazahTab('ujian');
+      renderNilaiIjazahTabel('ujian');
+      renderNilaiIjazahTabel('rapor');
+      renderNilaiIjazahTabel('ijazah');
+      
+      if (exportControlsUjian) exportControlsUjian.style.display = 'flex';
+      if (exportControlsRapor) exportControlsRapor.style.display = 'flex';
+      if (exportControlsIjazah) exportControlsIjazah.style.display = 'flex';
+      
+      activateIjazahTab('ujian');
   }
 
   function populateNilaiIjazahFilter(siswaList) {
@@ -5385,123 +5642,141 @@ function populateSiswaFilters() {
     }
   }
 
+  /**
+   * VERSI REFACTOR (Cepat)
+   * Merender tabel nilai ijazah (ujian, rapor, final) menggunakan DocumentFragment.
+   */
   function renderNilaiIjazahTabel(tipeTabel) {
-    let container;
-    let nilaiDataMap;
-    let showStatusColumn = false;
-    let useOriginal = false;
+      let container;
+      let nilaiDataMap;
+      let showStatusColumn = false;
+      let useOriginal = false;
 
-    if (tipeTabel === 'ujian') {
-      container = document.getElementById('ijazah-ujian-table-container');
-      useOriginal = !showWeightedUjian;
-      nilaiDataMap = useOriginal ? globalIjazahData.dataUjianOriginal : globalIjazahData.dataUjian;
-    } else if (tipeTabel === 'rapor') {
-      container = document.getElementById('ijazah-rapor-table-container');
-      useOriginal = !showWeightedRapor;
-      nilaiDataMap = useOriginal ? globalIjazahData.dataRaporOriginal : globalIjazahData.dataRapor;
-    } else {
-      container = document.getElementById('ijazah-final-table-container');
-      nilaiDataMap = globalIjazahData.dataIjazah;
-      showStatusColumn = true; 
-    }
-    
-    const { siswaList, mapelList, kkm } = globalIjazahData; 
-    const kkmValue = kkm || 76; 
-    
-    const selectedKelas = document.getElementById('ijazah-filter-kelas').value;
-    
-    if (!siswaList || siswaList.length === 0) {
-      container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada data siswa.</p>';
-      return;
-    }
-    if (!mapelList || mapelList.length === 0) {
-      container.innerHTML = `<p style="text-align: center; padding: 20px;">Belum ada mapel yang diatur untuk Ijazah.</p>`;
-      return;
-    }
-
-    const filteredSiswaList = (selectedKelas === 'semua')
-      ? siswaList
-      : siswaList.filter(siswa => siswa.kelas === selectedKelas);
-
-    if (filteredSiswaList.length === 0) {
-        container.innerHTML = '<p style="text-align: center; padding: 20px;">Tidak ada siswa di kelas yang dipilih.</p>';
-        return;
-    }
-
-    let html = '<table class="input-nilai-table guru-view">';
-    html += '<thead><tr><th>Nama Siswa</th>';
-    mapelList.forEach(mapel => {
-      html += `<th class="col-mapel clickable-mapel-header" data-mapel-nama="${mapel.nama}" title="Klik untuk lihat nama mapel">${mapel.id}</th>`;
-    });
-    html += '<th class="th-total th-total-jumlah">Jumlah</th>';
-    html += '<th class="th-total th-total-rata">Rata-Rata</th>';
-    if (showStatusColumn) { 
-      html += '<th class="th-total th-total-bulat">Status</th>'; 
-    }
-    html += '</tr></thead>';
-    
-    html += '<tbody>';
-    filteredSiswaList.forEach(siswa => {
-      html += '<tr>';
-      const namaProper = toProperCase(siswa.nama);
-      const namaFormatted = formatNamaSiswa(namaProper);
-      html += `<td><span class="clickable-nama-siswa" data-nisn="${siswa.nisn}" data-nama-lengkap="${siswa.nama}" title="Klik untuk lihat NISN">${namaFormatted}</span></td>`; 
-      
-      let sum = 0;
-      let count = 0;
-      
-      mapelList.forEach(mapel => {
-        const key = `${siswa.id}_${mapel.id}`;
-        const nilai = nilaiDataMap[key];
-        
-        let nilaiTampil = '-';
-        if (nilai !== null && nilai !== undefined) {
-            const nilaiAngka = parseFloat(nilai);
-            
-            if (tipeTabel === 'ijazah' || useOriginal) {
-              nilaiTampil = Math.round(nilaiAngka);
-              sum += Math.round(nilaiAngka);
-            } else {
-              nilaiTampil = nilaiAngka.toFixed(2);
-              sum += nilaiAngka;
-            }
-            count++;
-        }
-        
-        html += `<td class="col-mapel" style="text-align: center; font-weight: 500;">${nilaiTampil}</td>`;
-      });
-      
-      const average = (count > 0) ? (sum / count) : 0;
-      
-      if (tipeTabel === 'ijazah' || useOriginal) {
-         html += `<td class="col-total col-total-jumlah">${Math.round(sum)}</td>`;
+      if (tipeTabel === 'ujian') {
+        container = document.getElementById('ijazah-ujian-table-container');
+        useOriginal = !showWeightedUjian;
+        nilaiDataMap = useOriginal ? globalIjazahData.dataUjianOriginal : globalIjazahData.dataUjian;
+      } else if (tipeTabel === 'rapor') {
+        container = document.getElementById('ijazah-rapor-table-container');
+        useOriginal = !showWeightedRapor;
+        nilaiDataMap = useOriginal ? globalIjazahData.dataRaporOriginal : globalIjazahData.dataRapor;
       } else {
-         html += `<td class="col-total col-total-jumlah">${sum.toFixed(2)}</td>`;
+        container = document.getElementById('ijazah-final-table-container');
+        nilaiDataMap = globalIjazahData.dataIjazah;
+        showStatusColumn = true; 
+      }
+      
+      container.innerHTML = ""; // 1. Kosongkan
+
+      const { siswaList, mapelList, kkm } = globalIjazahData; 
+      const kkmValue = kkm || 76; 
+      const selectedKelas = document.getElementById('ijazah-filter-kelas').value;
+      
+      // 2. Logika Pengecekan Data Kosong
+      if (!siswaList || siswaList.length === 0) {
+        container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada data siswa.</p>';
+        return;
+      }
+      if (!mapelList || mapelList.length === 0) {
+        container.innerHTML = `<p style="text-align: center; padding: 20px;">Belum ada mapel yang diatur untuk Ijazah.</p>`;
+        return;
       }
 
-      html += `<td class="col-total col-total-rata">${average.toFixed(2)}</td>`;
-      
+      const filteredSiswaList = (selectedKelas === 'semua')
+        ? siswaList
+        : siswaList.filter(siswa => siswa.kelas === selectedKelas);
+
+      if (filteredSiswaList.length === 0) {
+          container.innerHTML = '<p style="text-align: center; padding: 20px;">Tidak ada siswa di kelas yang dipilih.</p>';
+          return;
+      }
+
+      // 3. Mulai Buat Tabel
+      const table = document.createElement('table');
+      table.className = 'input-nilai-table guru-view';
+
+      // 4. Buat Header
+      const thead = table.createTHead();
+      const headerRow = thead.insertRow();
+      let headerHTML = '<th>Nama Siswa</th>';
+      mapelList.forEach(mapel => {
+        headerHTML += `<th class="col-mapel clickable-mapel-header" data-mapel-nama="${mapel.nama}" title="Klik untuk lihat nama mapel">${mapel.id}</th>`;
+      });
+      headerHTML += '<th class="th-total th-total-jumlah">Jumlah</th>';
+      headerHTML += '<th class="th-total th-total-rata">Rata-Rata</th>';
       if (showStatusColumn) { 
-        let statusText = '';
-        let statusClass = '';
-        
-        const nilaiAkhirIjazah = (count > 0) ? (sum / count) : 0;
-        
-        if (nilaiAkhirIjazah >= kkmValue) {
-          statusText = 'LULUS';
-          statusClass = 'status-lulus';
-        } else {
-          statusText = 'TIDAK LULUS';
-          statusClass = 'status-tidak-lulus';
-        }
-        html += `<td class="col-total col-total-bulat ${statusClass}">${statusText}</td>`; 
+        headerHTML += '<th class="th-total th-total-bulat">Status</th>'; 
       }
-      
-      html += '</tr>';
-    });
-    html += '</tbody></table>';
+      headerRow.innerHTML = headerHTML;
 
-    container.innerHTML = html;
+      // 5. Buat Body & Fragment
+      const tbody = table.createTBody();
+      const fragment = document.createDocumentFragment();
+
+      filteredSiswaList.forEach(siswa => {
+          const tr = document.createElement('tr');
+          let rowHTML = '';
+          
+          const namaProper = toProperCase(siswa.nama);
+          const namaFormatted = formatNamaSiswa(namaProper);
+          rowHTML += `<td><span class="clickable-nama-siswa" data-nisn="${siswa.nisn}" data-nama-lengkap="${siswa.nama}" title="Klik untuk lihat NISN">${namaFormatted}</span></td>`; 
+          
+          let sum = 0;
+          let count = 0;
+          
+          mapelList.forEach(mapel => {
+              const key = `${siswa.id}_${mapel.id}`;
+              const nilai = nilaiDataMap[key];
+              
+              let nilaiTampil = '-';
+              if (nilai !== null && nilai !== undefined) {
+                  const nilaiAngka = parseFloat(nilai);
+                  
+                  if (tipeTabel === 'ijazah' || useOriginal) {
+                    nilaiTampil = Math.round(nilaiAngka);
+                    sum += nilaiTampil;
+                  } else {
+                    nilaiTampil = nilaiAngka.toFixed(2);
+                    sum += nilaiAngka;
+                  }
+                  count++;
+              }
+              rowHTML += `<td class="col-mapel" style="text-align: center; font-weight: 500;">${nilaiTampil}</td>`;
+          });
+          
+          const average = (count > 0) ? (sum / count) : 0;
+          
+          if (tipeTabel === 'ijazah' || useOriginal) {
+            rowHTML += `<td class="col-total col-total-jumlah">${Math.round(sum)}</td>`;
+          } else {
+            rowHTML += `<td class="col-total col-total-jumlah">${sum.toFixed(2)}</td>`;
+          }
+
+          rowHTML += `<td class="col-total col-total-rata">${average.toFixed(2)}</td>`;
+          
+          if (showStatusColumn) { 
+              let statusText = '';
+              let statusClass = '';
+              const nilaiAkhirIjazah = (count > 0) ? (sum / count) : 0;
+              
+              if (nilaiAkhirIjazah >= kkmValue) {
+                  statusText = 'LULUS';
+                  statusClass = 'status-lulus';
+              } else {
+                  statusText = 'TIDAK LULUS';
+                  statusClass = 'status-tidak-lulus';
+              }
+              rowHTML += `<td class="col-total col-total-bulat ${statusClass}">${statusText}</td>`; 
+          }
+          
+          tr.innerHTML = rowHTML;
+          fragment.appendChild(tr);
+      });
+
+      // 6. Tambahkan fragment ke body
+      tbody.appendChild(fragment);
+      // 7. Tambahkan tabel ke container
+      container.appendChild(table);
   }
 
   function toggleUjianView() {
@@ -5749,54 +6024,98 @@ function populateSiswaFilters() {
     onGagal(error);
   }
 
+  // Salin dan ganti fungsi onUpdateSemuaDataSukses() Anda dengan yang ini
   function onUpdateSemuaDataSukses(response) {
-    setLoading(false);
-    if (response.status === 'sukses') {
-      showToast('Semua data berhasil diperbarui dari server.', 'sukses');
-      
-      // Muat ulang data di halaman saat ini (jika bukan dashboard)
-      const currentPage = localStorage.getItem(LAST_PAGE_KEY) || 'halaman-utama';
-      if (currentPage !== 'halaman-utama') {
-        // Trik untuk memaksa halaman memuat ulang datanya:
-        // Pindah ke dashboard, lalu langsung kembali ke halaman saat ini.
-        // Ini akan memicu fungsi getSiswa(), getMapel(), dll.
-        bukaHalamanTersimpan('halaman-utama'); 
-        setTimeout(() => {
-          bukaHalamanTersimpan(currentPage);
-        }, 100);
+      setLoading(false);
+      if (response.status === 'sukses') {
+          showToast('Semua data berhasil diperbarui dari server.', 'sukses');
+          
+          // --- TAMBAHKAN BLOK INI UNTUK MEMBERSIHKAN CACHE KLIEN ---
+          console.log("Membersihkan cache sisi klien...");
+          globalSiswaList = [];
+          globalMapelList = [];
+          globalGuruList = [];
+          globalKelasListCache = [];
+          
+          // Hapus juga data grid yang tersimpan
+          globalGridData = {
+              siswaList: [],
+              mapelList: [],
+              nilaiData: {}
+          };
+          globalRaporData = {
+              P: { siswaList: [], mapelList: [], nilaiData: {} },
+              K: { siswaList: [], mapelList: [], nilaiData: {} },
+              Rekap: { siswaList: [], mapelList: [], nilaiRekapData: {} }
+          };
+          globalIjazahData = {
+              siswaList: [],
+              mapelList: [],
+              dataUjian: {},
+              dataRapor: {},
+              dataIjazah: {}
+          };
+          // --- AKHIR BLOK TAMBAHAN ---
+          
+          // Muat ulang data di halaman saat ini (logika asli Anda)
+          const currentPage = localStorage.getItem(LAST_PAGE_KEY) || 'halaman-utama';
+          if (currentPage !== 'halaman-utama') {
+              bukaHalamanTersimpan('halaman-utama'); 
+              setTimeout(() => {
+                  bukaHalamanTersimpan(currentPage); // Ini sekarang akan memicu 'cache miss'
+              }, 100);
+          }
+      } else {
+          showToast('Gagal memperbarui data: ' + response.message, 'gagal');
       }
-    } else {
-      showToast('Gagal memperbarui data: ' + response.message, 'gagal');
-    }
   }
 
-  // Update untuk fungsi rekalkulasi
+  // Salin dan GANTI fungsi jalankanRekalkulasiIjazah() Anda dengan yang ini
   function jalankanRekalkulasiIjazah() {
-    const btn = document.getElementById('btn-recalculate-ijazah');
-    setButtonLoading(btn, 'Menghitung...');
-    google.script.run
-      .withSuccessHandler(onRekalkulasiIjazahSukses)
-      .withFailureHandler(onGagalRekalkulasiIjazah)
-      .recalculateIjazahData(getToken());
+      const btn = document.getElementById('btn-recalculate-ijazah');
+      setButtonLoading(btn, 'Menghitung...');
+      
+      // 1. Tampilkan toast "Proses..." SEKARANG
+      // (showLoadingToast = true)
+      setLoading(true, "Proses sedang menghitung ulang, silahkan tunggu...", false, true);
+      
+      // --- PERBAIKAN UTAMA ---
+      // Gunakan setTimeout untuk memberi browser jeda agar sempat
+      // me-render toast SEBELUM kita memanggil server.
+      setTimeout(() => {
+        // 2. Panggil server SETELAH toast terlihat
+        google.script.run
+          .withSuccessHandler(onRekalkulasiIjazahSukses)
+          .withFailureHandler(onGagalRekalkulasiIjazah)
+          .recalculateIjazahData(getToken());
+      }, 50); // 50ms jeda, sudah cukup
+      // --- AKHIR PERBAIKAN ---
   }
 
+  // Salin dan GANTI fungsi onRekalkulasiIjazahSukses() Anda dengan yang ini
   function onRekalkulasiIjazahSukses(response) {
-    const btn = document.getElementById('btn-recalculate-ijazah');
-    resetButtonLoading(btn);
+      const btn = document.getElementById('btn-recalculate-ijazah');
+      resetButtonLoading(btn);
 
-    if (response.status === 'sukses') {
-      // Server akan mengirim { isDirty: false }
-      setIjazahDirty(response.isDirty); 
-      
-      showToast(response.message, 'sukses');
-      bukaHalamanNilaiIjazah();
-    } else {
-      // Server akan mengirim { isDirty: true } jika gagal
-      if (response.isDirty) {
+      if (response.status === 'sukses') {
+        // Server merespons { isDirty: false }
         setIjazahDirty(response.isDirty); 
+        
+        // Tampilkan toast "Sukses" (ini akan menggantikan toast "Proses...")
+        showToast(response.message, 'sukses');
+        
+        // --- PERBAIKAN ---
+        // Panggil bukaHalamanNilaiIjazah dengan flag 'isRecalculating'
+        bukaHalamanNilaiIjazah(true); // Kirim true
+        // --- AKHIR PERBAIKAN ---
+
+      } else {
+        // Server akan mengirim { isDirty: true } jika gagal
+        if (response.isDirty) {
+          setIjazahDirty(response.isDirty); 
+        }
+        showToast('Gagal menghitung: ' + response.message, 'gagal');
       }
-      showToast('Gagal menghitung: ' + response.message, 'gagal');
-    }
   }
 
   function onGagalRekalkulasiIjazah(error) {
@@ -5917,106 +6236,117 @@ function populateSiswaFilters() {
     selectKelas.value = selectedValue || (kelasList.length === 1 ? kelasList[0] : 'semua');
   }
 
+  /**
+   * VERSI REFACTOR (Cepat)
+   * Merender tabel validasi menggunakan DocumentFragment.
+   */
   function renderValidasiTable() {
-    const container = document.getElementById('validasi-nilai-table-container');
-    const { siswaList, validationData, requiredSemesters } = globalValidationData;
-    const selectedKelas = document.getElementById('validasi-filter-kelas').value;
+      const container = document.getElementById('validasi-nilai-table-container');
+      container.innerHTML = ""; // 1. Kosongkan
 
-    if (!siswaList || siswaList.length === 0) {
-      container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada data siswa.</p>';
-      return;
-    }
+      const { siswaList, validationData, requiredSemesters } = globalValidationData;
+      const selectedKelas = document.getElementById('validasi-filter-kelas').value;
 
-    const filteredSiswaList = (selectedKelas === 'semua')
-      ? siswaList
-      : siswaList.filter(siswa => siswa.kelas === selectedKelas);
+      // 2. Logika Pengecekan Data Kosong
+      if (!siswaList || siswaList.length === 0) {
+          container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada data siswa.</p>';
+          return;
+      }
 
-    if (filteredSiswaList.length === 0) {
-        container.innerHTML = '<p style="text-align: center; padding: 20px;">Tidak ada siswa di kelas yang dipilih.</p>';
+      const filteredSiswaList = (selectedKelas === 'semua')
+        ? siswaList
+        : siswaList.filter(siswa => siswa.kelas === selectedKelas);
+
+      if (filteredSiswaList.length === 0) {
+          container.innerHTML = '<p style="text-align: center; padding: 20px;">Tidak ada siswa di kelas yang dipilih.</p>';
+          return;
+      }
+      
+      const firstSiswaValidasi = validationData[filteredSiswaList[0].id];
+      if (!firstSiswaValidasi) {
+        container.innerHTML = '<p style="text-align: center; padding: 20px;">Data validasi tidak ditemukan untuk siswa.</p>';
         return;
-    }
-    
-    const firstSiswaValidasi = validationData[filteredSiswaList[0].id];
-    if (!firstSiswaValidasi) {
-      container.innerHTML = '<p style="text-align: center; padding: 20px;">Data validasi tidak ditemukan untuk siswa.</p>';
-      return;
-    }
+      }
 
-    const hasUM = firstSiswaValidasi.ujian.hasOwnProperty('UM');
-    const hasUP = firstSiswaValidasi.ujian.hasOwnProperty('UP');
-    const jenjangPilihan = jenjangPilihanCache;
-    const labelUjian = (jenjangPilihan === 'MI' || jenjangPilihan === 'MTS' || jenjangPilihan === 'MA') ? 'UM' : 'US';
+      // 3. Mulai Buat Tabel
+      const table = document.createElement('table');
+      table.className = 'input-nilai-table';
 
-    let html = '<table class="input-nilai-table">';
-    html += '<thead><tr>';
-    html += '<th>Nama Siswa</th>';
-    html += '<th>Kelas</th>';
-    
-    const namaUjianLengkap = (labelUjian === 'UM') ? 'Ujian Madrasah' : 'Ujian Sekolah';
-
-    if (hasUM) {
-      html += `<th class="col-validasi-header col-validasi-ujian clickable-mapel-header" data-mapel-nama="${namaUjianLengkap}" title="Klik untuk lihat nama mapel">${labelUjian}</th>`;
-    }
-    if (hasUP) {
-      html += `<th class="col-validasi-header col-validasi-ujian clickable-mapel-header" data-mapel-nama="Ujian Praktek" title="Klik untuk lihat nama mapel">UP</th>`;
-    }
-    
-    requiredSemesters.forEach(semester => {
-      const shortCodeP = `${semester.shortCode}.P`;
-      const fullNameP = `${semester.nama} (Pengetahuan)`;
-      const shortCodeK = `${semester.shortCode}.K`;
-      const fullNameK = `${semester.nama} (Keterampilan)`;
+      // 4. Buat Header
+      const thead = table.createTHead();
+      const headerRow = thead.insertRow();
       
-      html += `<th class="col-validasi-header col-validasi-rapor clickable-mapel-header" data-mapel-nama="${fullNameP}" title="Klik untuk lihat nama mapel">${shortCodeP}</th>`;
-      html += `<th class="col-validasi-header col-validasi-rapor clickable-mapel-header" data-mapel-nama="${fullNameK}" title="Klik untuk lihat nama mapel">${shortCodeK}</th>`;
-    });
-    
-    html += '</tr></thead>';
-    
-    html += '<tbody>';
-    filteredSiswaList.forEach(siswa => {
-      html += '<tr>';
-      
-      const namaProper = toProperCase(siswa.nama);
-      const namaFormatted = formatNamaSiswa(namaProper);
-      
-      html += `
-        <td>
-          <span 
-            class="clickable-nama-siswa" 
-            data-nisn="${siswa.nisn}" 
-            data-nama-lengkap="${siswa.nama}"
-            title="Klik untuk lihat NISN"
-          >
-            ${namaFormatted}
-          </span>
-        </td>`;
-      
-      html += `<td>${siswa.kelas}</td>`;
+      const hasUM = firstSiswaValidasi.ujian.hasOwnProperty('UM');
+      const hasUP = firstSiswaValidasi.ujian.hasOwnProperty('UP');
+      const jenjangPilihan = jenjangPilihanCache;
+      const labelUjian = (jenjangPilihan === 'MI' || jenjangPilihan === 'MTS' || jenjangPilihan === 'MA') ? 'UM' : 'US';
+      const namaUjianLengkap = (labelUjian === 'UM') ? 'Ujian Madrasah' : 'Ujian Sekolah';
 
-      const validasi = validationData[siswa.id] || { rapor: {}, ujian: {} };
+      let headerHTML = '<th>Nama Siswa</th><th>Kelas</th>';
+      if (hasUM) {
+        headerHTML += `<th class="col-validasi-header col-validasi-ujian clickable-mapel-header" data-mapel-nama="${namaUjianLengkap}" title="Klik untuk lihat nama mapel">${labelUjian}</th>`;
+      }
+      if (hasUP) {
+        headerHTML += `<th class="col-validasi-header col-validasi-ujian clickable-mapel-header" data-mapel-nama="Ujian Praktek" title="Klik untuk lihat nama mapel">UP</th>`;
+      }
+      requiredSemesters.forEach(semester => {
+        const shortCodeP = `${semester.shortCode}.P`;
+        const fullNameP = `${semester.nama} (Pengetahuan)`;
+        const shortCodeK = `${semester.shortCode}.K`;
+        const fullNameK = `${semester.nama} (Keterampilan)`;
+        headerHTML += `<th class="col-validasi-header col-validasi-rapor clickable-mapel-header" data-mapel-nama="${fullNameP}" title="Klik untuk lihat nama mapel">${shortCodeP}</th>`;
+        headerHTML += `<th class="col-validasi-header col-validasi-rapor clickable-mapel-header" data-mapel-nama="${fullNameK}" title="Klik untuk lihat nama mapel">${shortCodeK}</th>`;
+      });
+      headerRow.innerHTML = headerHTML;
 
+      // 5. Buat Body & Fragment
+      const tbody = table.createTBody();
+      const fragment = document.createDocumentFragment();
+      
       const okIcon = '<span class="validasi-icon validasi-ok"><i class="fas fa-check-circle"></i></span>';
       const noIcon = '<span class="validasi-icon validasi-no"><i class="fas fa-times-circle"></i></span>';
 
-      if (hasUM) {
-        html += `<td>${validasi.ujian.UM ? okIcon : noIcon}</td>`;
-      }
-      if (hasUP) {
-        html += `<td>${validasi.ujian.UP ? okIcon : noIcon}</td>`;
-      }
+      filteredSiswaList.forEach(siswa => {
+          const tr = document.createElement('tr');
+          let rowHTML = '';
+          
+          const namaProper = toProperCase(siswa.nama);
+          const namaFormatted = formatNamaSiswa(namaProper);
+          rowHTML += `
+            <td>
+              <span 
+                class="clickable-nama-siswa" 
+                data-nisn="${siswa.nisn}" 
+                data-nama-lengkap="${siswa.nama}"
+                title="Klik untuk lihat NISN"
+              >
+                ${namaFormatted}
+              </span>
+            </td>`;
+          rowHTML += `<td>${siswa.kelas}</td>`;
 
-      requiredSemesters.forEach(semester => {
-        const semId = semester.id;
-        html += `<td>${validasi.rapor[semId + "_P"] ? okIcon : noIcon}</td>`;
-        html += `<td>${validasi.rapor[semId + "_K"] ? okIcon : noIcon}</td>`;
+          const validasi = validationData[siswa.id] || { rapor: {}, ujian: {} };
+
+          if (hasUM) {
+            rowHTML += `<td>${validasi.ujian.UM ? okIcon : noIcon}</td>`;
+          }
+          if (hasUP) {
+            rowHTML += `<td>${validasi.ujian.UP ? okIcon : noIcon}</td>`;
+          }
+          requiredSemesters.forEach(semester => {
+            const semId = semester.id;
+            rowHTML += `<td>${validasi.rapor[semId + "_P"] ? okIcon : noIcon}</td>`;
+            rowHTML += `<td>${validasi.rapor[semId + "_K"] ? okIcon : noIcon}</td>`;
+          });
+          
+          tr.innerHTML = rowHTML;
+          fragment.appendChild(tr);
       });
 
-      html += '</tr>';
-    });
-    html += '</tbody></table>';
-
-    container.innerHTML = html;
+      // 6. Tambahkan fragment ke body
+      tbody.appendChild(fragment);
+      // 7. Tambahkan tabel ke container
+      container.appendChild(table);
   }
 
   function forceLogoutInstan() {
@@ -6982,56 +7312,80 @@ function populateSiswaFilters() {
   let globalKelasListCache = []; // Cache untuk daftar kelas
   // --- AKHIR TAMBAHAN ---
 
-  // Di dalam client.html
+  // Salin dan ganti fungsi bukaHalamanGuru() Anda dengan yang ini
   function bukaHalamanGuru() {
-    tampilHalaman('halaman-guru');
-    
-    setLoading(true, 'Memuat data guru...', false, false);
-    
-    document.getElementById('guru-table-container').innerHTML = '<p>Memuat data guru...</p>';
-    document.getElementById('btn-tambah-guru-baru').disabled = true;
-    document.getElementById('btn-import-guru').disabled = true;
-    document.getElementById('btn-cetak-kartu-guru').disabled = true;
-    document.getElementById('btn-sync-guru-kelas').disabled = true; // <-- TAMBAHKAN INI
-    document.getElementById('btn-sync-guru-kelas').style.display = 'none'; // <-- TAMBAHKAN INI
-    document.getElementById('btn-simpan-pengaturan-guru').disabled = true;
-    const containerTanggal = document.getElementById('container-tanggal-input-guru');
-    if (containerTanggal) containerTanggal.style.display = 'none';
-    hideMessage('pengaturan-guru-message');
-    
-    // 1. Panggil data Pengaturan (paralel)
-    google.script.run
-      .withSuccessHandler(onPengaturanGuruLoaded)
-      .withFailureHandler(onGagal) 
-      .getPengaturanGuru(getToken());
+      tampilHalaman('halaman-guru');
+      
+      // 1. Panggil data Pengaturan (selalu panggil, datanya kecil)
+      google.script.run
+          .withSuccessHandler(onPengaturanGuruLoaded)
+          .withFailureHandler(onGagal) 
+          .getPengaturanGuru(getToken());
 
-    // 2. Reset cache kelas dan panggil getKelas DULU.
-    //    Callback-nya (onKelasLoadedForGuruPage) akan memanggil getGuru.
-    globalKelasListCache = [];
-    google.script.run
-      .withSuccessHandler(onKelasLoadedForGuruPage) // <-- Panggil callback baru
-      .withFailureHandler(onGagal) // onGagal akan menghentikan loading
-      .getKelas(getToken());
+      // --- PENAMBAHAN LOGIKA CACHE ---
+      // 2. Cek apakah cache kelas DAN guru sudah ada
+      if (globalKelasListCache.length > 0 && globalGuruList.length > 0) {
+          console.log("Memuat guru & kelas dari cache klien...");
+          setLoading(true, 'Memuat data guru...', false, false); // Set loading, onGuruLoaded akan menonaktifkannya
+
+          // Panggil handler kelas secara manual, beri tanda 'isFromCache'
+          onKelasLoadedForGuruPage({ status: "sukses", kelasList: globalKelasListCache }, true);
+          
+          // Panggil handler guru secara manual
+          onGuruLoaded({ status: "sukses", guru: globalGuruList });
+
+      } else {
+          // 3. Jika salah satu cache kosong, panggil server
+          console.log("Memuat guru & kelas dari server...");
+          setLoading(true, 'Memuat data guru...', false, false);
+          
+          document.getElementById('guru-table-container').innerHTML = '<p>Memuat data guru...</p>';
+          document.getElementById('btn-tambah-guru-baru').disabled = true;
+          document.getElementById('btn-import-guru').disabled = true;
+          document.getElementById('btn-cetak-kartu-guru').disabled = true;
+          document.getElementById('btn-sync-guru-kelas').disabled = true;
+          document.getElementById('btn-sync-guru-kelas').style.display = 'none';
+          document.getElementById('btn-simpan-pengaturan-guru').disabled = true;
+          const containerTanggal = document.getElementById('container-tanggal-input-guru');
+          if (containerTanggal) containerTanggal.style.display = 'none';
+          hideMessage('pengaturan-guru-message');
+          
+          // Reset cache kelas dan panggil getKelas (logika asli)
+          globalKelasListCache = [];
+          google.script.run
+              .withSuccessHandler(onKelasLoadedForGuruPage) // Ini akan memicu getGuru()
+              .withFailureHandler(onGagal)
+              .getKelas(getToken());
+      }
+      // --- AKHIR PERUBAHAN ---
   }
 
   /**
    * [BARU] Callback setelah kelas dimuat, SEBELUM memuat guru.
+   * VERSI REFACTOR: Menambahkan flag isFromCache
    */
-  function onKelasLoadedForGuruPage(response) {
-    if (response.status === 'sukses') {
-      globalKelasListCache = response.kelasList;
-      
-      // 3. Setelah kelas dimuat, SEKARANG panggil getGuru
-      google.script.run
-        .withSuccessHandler(onGuruLoaded)
-        .withFailureHandler(onGagal)
-        .getGuru(getToken());
-        
-    } else {
-      // Gagal memuat kelas. Ini fatal. Hentikan loading dan tampilkan error.
-      globalKelasListCache = [];
-      onGagal(response); // Biarkan onGagal mematikan loading
-    }
+  function onKelasLoadedForGuruPage(response, isFromCache = false) { // <-- TAMBAHKAN PARAMETER
+      if (response.status === 'sukses') {
+          globalKelasListCache = response.kelasList;
+
+          // --- PENAMBAHAN LOGIKA ---
+          // Jika data berasal dari cache, jangan panggil server lagi.
+          if (isFromCache) {
+              return; 
+          }
+          // --- AKHIR PENAMBAHAN ---
+          
+          // 3. Setelah kelas dimuat (dari server), SEKARANG panggil getGuru (Logika Asli)
+          google.script.run
+              .withSuccessHandler(onGuruLoaded)
+              .withFailureHandler(onGagal)
+              .getGuru(getToken());
+              
+      } else {
+          // Gagal memuat kelas. Ini fatal. Hentikan loading dan tampilkan error.
+          globalKelasListCache = [];
+          onGagal(response); // Biarkan onGagal mematikan loading
+      }
   }
 
   let globalGuruList = []; // Cache lokal untuk data guru
@@ -7161,95 +7515,103 @@ function populateSiswaFilters() {
     }
   }
 
-  // Di dalam client.html
+  /**
+   * VERSI REFACTOR (Cepat)
+   * Merender tabel guru menggunakan DocumentFragment.
+   */
   function renderGuruTable(guruList) {
-    const container = document.getElementById('guru-table-container');
-    if (!guruList || guruList.length === 0) {
-      container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada data guru.</p>';
-      return;
-    }
+      const container = document.getElementById('guru-table-container');
+      container.innerHTML = ""; // 1. Kosongkan
 
-    // --- LOGIKA BARU DIMULAI DI SINI ---
-    // Ambil data kelas yang valid dari cache yang sudah kita muat
-    const validKelasNames = globalKelasListCache.map(k => k.nama);
-    const totalKelasCount = globalKelasListCache.length;
-    // --- LOGIKA BARU BERAKHIR DI SINI ---
-
-    let html = '<table class="siswa-table guru-table">';
-    html += '<thead><tr><th>Nama Guru</th><th>Email Login</th><th>Mapel Diampu</th><th>Aksi</th></tr></thead>';
-    html += '<tbody>';
-    
-    guruList.forEach(guru => {
-      
-      const mapelKelasData = guru.mapelKelas || {};
-      const mapelEntries = Object.entries(mapelKelasData);
-
-      let mapelBadges = '';
-      if (mapelEntries.length > 0) {
-        mapelBadges = mapelEntries.map(([mapelId, kelasArray]) => {
-          
-          // --- LOGIKA VALIDASI KELAS YANG DIPERBARUI ---
-          let kelasStr = '';
-          
-          if (totalKelasCount <= 1) {
-            // KASUS 1: Hanya ada 1 (atau 0) kelas. Selalu tampilkan "Semua Kelas"
-            // Ini menyelesaikan skenario Anda (dari 2 kelas jadi 1).
-            kelasStr = '(Semua Kelas)';
-          } else {
-            // KASUS 2: Ada lebih dari 1 kelas.
-            if (Array.isArray(kelasArray) && kelasArray.includes('*')) {
-              kelasStr = '(Semua Kelas)';
-            } else if (Array.isArray(kelasArray)) {
-              // Filter kelas yang disimpan vs kelas yang valid
-              const validStoredKelas = kelasArray.filter(k => validKelasNames.includes(k));
-              
-              if (validStoredKelas.length === 0) {
-                // Jika guru diatur ke kelas yg sudah dihapus (misal "9C")
-                kelasStr = '<i style="opacity: 0.7;">(Kelas Dihapus)</i>';
-              } else {
-                // Tampilkan hanya kelas yang masih ada
-                kelasStr = `(${validStoredKelas.join(', ')})`;
-              }
-            } else {
-              kelasStr = '<i style="opacity: 0.7;">(Data Lama)</i>'; // Fallback jika data rusak
-            }
-          }
-          // --- AKHIR LOGIKA VALIDASI ---
-
-          return `<span class="selected-mapel-tag" style="margin: 2px;">${mapelId} <i style="opacity: 0.7; margin-left: 5px;">${kelasStr}</i></span>`;
-        
-        }).join('');
-      } else {
-        mapelBadges = '<span style="color: var(--text-light); font-style: italic;">Belum ada mapel</span>';
+      if (!guruList || guruList.length === 0) {
+          container.innerHTML = '<p style="text-align: center; padding: 20px;">Belum ada data guru.</p>';
+          return;
       }
 
-      const guruDataJson = JSON.stringify({
-          email: guru.email,
-          nama: guru.nama,
-          mapelKelas: guru.mapelKelas 
-      }).replace(/"/g, '&quot;');
+      // Ambil data kelas yang valid dari cache
+      const validKelasNames = globalKelasListCache.map(k => k.nama);
+      const totalKelasCount = globalKelasListCache.length;
 
-      html += `
-        <tr>
-          <td><strong>${guru.nama}</strong></td>
-          <td>${guru.email}</td>
-          <td>${mapelBadges}</td>
-          <td>
-            <div class="btn-grup-aksi">
-                  <button class="btn-aksi btn-edit btn-edit-guru" data-guru="${guruDataJson}">
-                    <i class="fas fa-pencil-alt"></i> Edit
-                  </button>
-                  <button class="btn-aksi btn-delete btn-delete-guru" data-email="${guru.email}" data-nama="${guru.nama}">
-                    <i class="fas fa-trash-alt"></i> Hapus
-                  </button>
-            </div>
-          </td>
-        </tr>
-      `;
-    });
+      // 2. Buat elemen tabel
+      const table = document.createElement('table');
+      table.className = 'siswa-table guru-table';
 
-    html += '</tbody></table>';
-    container.innerHTML = html;
+      // 3. Buat header
+      const thead = table.createTHead();
+      const headerRow = thead.insertRow();
+      headerRow.innerHTML = '<thead><tr><th>Nama Guru</th><th>Email Login</th><th>Mapel Diampu</th><th>Aksi</th></tr></thead>';
+
+      // 4. Buat body dan DocumentFragment
+      const tbody = table.createTBody();
+      const fragment = document.createDocumentFragment();
+      
+      guruList.forEach(guru => {
+          const mapelKelasData = guru.mapelKelas || {};
+          const mapelEntries = Object.entries(mapelKelasData);
+
+          let mapelBadges = '';
+          if (mapelEntries.length > 0) {
+              mapelBadges = mapelEntries.map(([mapelId, kelasArray]) => {
+                  
+                  let kelasStr = '';
+                  if (totalKelasCount <= 1) {
+                      kelasStr = '(Semua Kelas)';
+                  } else {
+                      if (Array.isArray(kelasArray) && kelasArray.includes('*')) {
+                          kelasStr = '(Semua Kelas)';
+                      } else if (Array.isArray(kelasArray)) {
+                          const validStoredKelas = kelasArray.filter(k => validKelasNames.includes(k));
+                          if (validStoredKelas.length === 0) {
+                              kelasStr = '<i style="opacity: 0.7;">(Kelas Dihapus)</i>';
+                          } else {
+                              kelasStr = `(${validStoredKelas.join(', ')})`;
+                          }
+                      } else {
+                          kelasStr = '<i style="opacity: 0.7;">(Data Lama)</i>';
+                      }
+                  }
+                  return `<span class="selected-mapel-tag" style="margin: 2px;">${mapelId} <i style="opacity: 0.7; margin-left: 5px;">${kelasStr}</i></span>`;
+              
+              }).join('');
+          } else {
+              mapelBadges = '<span style="color: var(--text-light); font-style: italic;">Belum ada mapel</span>';
+          }
+
+          const guruDataJson = JSON.stringify({
+              email: guru.email,
+              nama: guru.nama,
+              mapelKelas: guru.mapelKelas 
+          }).replace(/"/g, '&quot;');
+
+          // 5. Buat <tr> baru di memori
+          const tr = document.createElement('tr');
+          
+          // 6. Isi <td> menggunakan .innerHTML
+          tr.innerHTML = `
+              <td><strong>${guru.nama}</strong></td>
+              <td>${guru.email}</td>
+              <td>${mapelBadges}</td>
+              <td>
+                <div class="btn-grup-aksi">
+                      <button class="btn-aksi btn-edit btn-edit-guru" data-guru="${guruDataJson}">
+                        <i class="fas fa-pencil-alt"></i> Edit
+                      </button>
+                      <button class="btn-aksi btn-delete btn-delete-guru" data-email="${guru.email}" data-nama="${guru.nama}">
+                        <i class="fas fa-trash-alt"></i> Hapus
+                      </button>
+                </div>
+              </td>
+          `;
+          
+          // 7. Tambahkan <tr> ke fragment
+          fragment.appendChild(tr);
+      });
+
+      // 8. Tambahkan fragment ke tbody
+      tbody.appendChild(fragment);
+
+      // 9. Tambahkan tabel ke container
+      container.appendChild(table);
   }
 
   function showModalGuru(mode, guruData = null) {
